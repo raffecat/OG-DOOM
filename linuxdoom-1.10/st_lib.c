@@ -22,7 +22,7 @@
 //-----------------------------------------------------------------------------
 
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: st_lib.c,v 1.4 1997/02/03 16:47:56 b1 Exp $";
 
 #include <ctype.h>

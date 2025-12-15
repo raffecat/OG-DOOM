@@ -23,7 +23,7 @@
 //
 //-----------------------------------------------------------------------------
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: p_enemy.c,v 1.5 1997/02/03 22:45:11 b1 Exp $";
 
 #include <stdlib.h>
@@ -503,11 +503,11 @@ P_LookForPlayers
     int		c;
     int		stop;
     player_t*	player;
-    sector_t*	sector;
+    //sector_t*	sector;
     angle_t	an;
     fixed_t	dist;
 		
-    sector = actor->subsector->sector;
+    //sector = actor->subsector->sector;  // FIX: unused
 	
     c = 0;
     stop = (actor->lastlook-1)&3;

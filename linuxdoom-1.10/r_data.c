@@ -24,7 +24,7 @@
 //-----------------------------------------------------------------------------
 
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: r_data.c,v 1.4 1997/02/03 16:47:55 b1 Exp $";
 
 #include "i_system.h"
@@ -191,9 +191,9 @@ R_DrawColumnInCache
     int		count;
     int		position;
     byte*	source;
-    byte*	dest;
+    //byte*	dest;  // FIX: unused
 	
-    dest = (byte *)cache + 3;
+    //dest = (byte *)cache + 3;
 	
     while (patch->topdelta != 0xff)
     {
@@ -428,7 +428,7 @@ void R_InitTextures (void)
     
     int*		patchlookup;
     
-    int			totalwidth;
+    //int			totalwidth;  // FIX: unused
     int			nummappatches;
     int			offset;
     int			maxoff;
@@ -488,6 +488,8 @@ void R_InitTextures (void)
     textureheight = Z_Malloc (numtextures*4, PU_STATIC, 0);
 
     totalwidth = 0;
+
+    //totalwidth = 0;
     
     //	Really complex printing shit...
     temp1 = W_GetNumForName ("S_START");  // P_???????
@@ -555,7 +557,7 @@ void R_InitTextures (void)
 	texturewidthmask[i] = j-1;
 	textureheight[i] = texture->height<<FRACBITS;
 		
-	totalwidth += texture->width;
+	//totalwidth += texture->width;
     }
 
     Z_Free (maptex1);

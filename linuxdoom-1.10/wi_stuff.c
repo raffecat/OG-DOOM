@@ -21,7 +21,7 @@
 //
 //-----------------------------------------------------------------------------
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: wi_stuff.c,v 1.7 1997/02/03 22:45:13 b1 Exp $";
 
 #include <stdio.h>
@@ -987,9 +987,9 @@ void WI_drawDeathmatchStats(void)
     int		y;
     int		w;
     
-    int		lh;	// line height
+    //int		lh;	// line height
 
-    lh = WI_SPACINGY;
+    //lh = WI_SPACINGY;  // FIX: unused
 
     WI_slamBackground();
     

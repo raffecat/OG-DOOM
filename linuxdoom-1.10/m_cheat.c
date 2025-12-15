@@ -22,7 +22,7 @@
 //-----------------------------------------------------------------------------
 
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: m_cheat.c,v 1.1 1997/02/03 21:24:34 b1 Exp $";
 
 #include "m_cheat.h"

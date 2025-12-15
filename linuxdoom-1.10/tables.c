@@ -36,7 +36,7 @@
 //-----------------------------------------------------------------------------
 
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: tables.c,v 1.4 1997/02/03 16:47:57 b1 Exp $";
 
 

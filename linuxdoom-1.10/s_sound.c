@@ -21,7 +21,7 @@
 //-----------------------------------------------------------------------------
 
 
-static const char
+static const char __attribute__((unused))
 rcsid[] = "$Id: s_sound.c,v 1.6 1997/02/03 22:45:12 b1 Exp $";
 
 
@@ -658,6 +658,7 @@ S_ChangeMusic
 	 || (musicnum >= NUMMUSIC) )
     {
 	I_Error("Bad music number %d", musicnum);
+	return; // FIX: uninitialised music
     }
     else
 	music = &S_music[musicnum];
