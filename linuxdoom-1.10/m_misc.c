@@ -231,6 +231,13 @@ typedef struct
     int		untranslated;		// lousy hack
 } default_t;
 
+typedef struct
+{
+    char*	name;
+    char**	location;
+    char*   defaultvalue;
+} strdefault_t;
+
 default_t	defaults[] =
 {
     {"mouse_sensitivity",&mouseSensitivity, 5},
@@ -254,15 +261,9 @@ default_t	defaults[] =
 
 // UNIX hack, to be removed. 
 #ifdef SNDSERV
-    {"sndserver", (int *) &sndserver_filename, (int) "sndserver"},
     {"mb_used", &mb_used, 2},
 #endif
     
-#endif
-
-#ifdef LINUX
-    {"mousedev", (int*)&mousedev, (int)"/dev/ttyS0"},
-    {"mousetype", (int*)&mousetype, (int)"microsoft"},
 #endif
 
     {"use_mouse",&usemouse, 1},
@@ -284,22 +285,32 @@ default_t	defaults[] =
 
 
     {"usegamma",&usegamma, 0},
-
-    {"chatmacro0", (int *) &chat_macros[0], (int) HUSTR_CHATMACRO0 },
-    {"chatmacro1", (int *) &chat_macros[1], (int) HUSTR_CHATMACRO1 },
-    {"chatmacro2", (int *) &chat_macros[2], (int) HUSTR_CHATMACRO2 },
-    {"chatmacro3", (int *) &chat_macros[3], (int) HUSTR_CHATMACRO3 },
-    {"chatmacro4", (int *) &chat_macros[4], (int) HUSTR_CHATMACRO4 },
-    {"chatmacro5", (int *) &chat_macros[5], (int) HUSTR_CHATMACRO5 },
-    {"chatmacro6", (int *) &chat_macros[6], (int) HUSTR_CHATMACRO6 },
-    {"chatmacro7", (int *) &chat_macros[7], (int) HUSTR_CHATMACRO7 },
-    {"chatmacro8", (int *) &chat_macros[8], (int) HUSTR_CHATMACRO8 },
-    {"chatmacro9", (int *) &chat_macros[9], (int) HUSTR_CHATMACRO9 }
-
 };
 
-int	numdefaults;
-char*	defaultfile;
+strdefault_t strdefaults[] = {
+#ifdef LINUX
+    {"mousedev", &mousedev, "/dev/ttyS0"},
+    {"mousetype", &mousetype, "microsoft"},
+#endif
+// UNIX hack, to be removed. 
+#ifdef SNDSERV
+    {"sndserver", &sndserver_filename, "sndserver"},
+#endif
+    {"chatmacro0", &chat_macros[0], HUSTR_CHATMACRO0 },
+    {"chatmacro1", &chat_macros[1], HUSTR_CHATMACRO1 },
+    {"chatmacro2", &chat_macros[2], HUSTR_CHATMACRO2 },
+    {"chatmacro3", &chat_macros[3], HUSTR_CHATMACRO3 },
+    {"chatmacro4", &chat_macros[4], HUSTR_CHATMACRO4 },
+    {"chatmacro5", &chat_macros[5], HUSTR_CHATMACRO5 },
+    {"chatmacro6", &chat_macros[6], HUSTR_CHATMACRO6 },
+    {"chatmacro7", &chat_macros[7], HUSTR_CHATMACRO7 },
+    {"chatmacro8", &chat_macros[8], HUSTR_CHATMACRO8 },
+    {"chatmacro9", &chat_macros[9], HUSTR_CHATMACRO9 }
+};
+
+static int	numdefaults;
+static int	numstrdefaults;
+static char*	defaultfile;
 
 
 //
@@ -309,6 +320,7 @@ void M_SaveDefaults (void)
 {
     int		i;
     int		v;
+    char*   s;
     FILE*	f;
 	
     f = fopen (defaultfile, "w");
@@ -317,17 +329,14 @@ void M_SaveDefaults (void)
 		
     for (i=0 ; i<numdefaults ; i++)
     {
-	if (defaults[i].defaultvalue > -0xfff
-	    && defaults[i].defaultvalue < 0xfff)
-	{
 	    v = *defaults[i].location;
 	    fprintf (f,"%s\t\t%i\n",defaults[i].name,v);
-	} else {
-	    fprintf (f,"%s\t\t\"%s\"\n",defaults[i].name,
-		     * (char **) (defaults[i].location));
-	}
     }
-	
+    for (i=0 ; i<numstrdefaults ; i++) {
+        s = *strdefaults[i].location;
+	    fprintf (f,"%s\t\t\"%s\"\n",defaults[i].name,s);
+    }
+
     fclose (f);
 }
 
@@ -346,12 +355,14 @@ void M_LoadDefaults (void)
     char	strparm[100];
     char*	newstring;
     int		parm;
-    boolean	isstring;
     
     // set everything to base values
     numdefaults = sizeof(defaults)/sizeof(defaults[0]);
+    numstrdefaults = sizeof(strdefaults)/sizeof(strdefaults[0]);
     for (i=0 ; i<numdefaults ; i++)
 	*defaults[i].location = defaults[i].defaultvalue;
+    for (i=0 ; i<numstrdefaults ; i++)
+	*strdefaults[i].location = strdefaults[i].defaultvalue;
     
     // check for a custom default file
     i = M_CheckParm ("-config");
@@ -369,34 +380,37 @@ void M_LoadDefaults (void)
     {
 	while (!feof(f))
 	{
-	    isstring = false;
 	    if (fscanf (f, "%79s %[^\n]\n", def, strparm) == 2)
 	    {
-		if (strparm[0] == '"')
-		{
-		    // get a string default
-		    isstring = true;
-		    len = strlen(strparm);
-		    newstring = (char *) malloc(len);
-		    strparm[len-1] = 0;
-		    strcpy(newstring, strparm+1);
-		}
-		else if (strparm[0] == '0' && strparm[1] == 'x')
-		    sscanf(strparm+2, "%x", &parm);
-		else
-		    sscanf(strparm, "%i", &parm);
-		for (i=0 ; i<numdefaults ; i++)
-		    if (!strcmp(def, defaults[i].name))
-		    {
-			if (!isstring)
-			    *defaults[i].location = parm;
-			else
-			    *defaults[i].location =
-				(int) newstring;
-			break;
-		    }
-	    }
-	}
+            if (strparm[0] == '"')
+            {
+                // get a string default
+                len = strlen(strparm);
+                newstring = (char *) malloc(len);
+                strparm[len-1] = 0;
+                strcpy(newstring, strparm+1);
+                for (i=0 ; i<numstrdefaults ; i++) {
+                    if (!strcmp(def, strdefaults[i].name))
+                    {
+                        *strdefaults[i].location = newstring;
+                        break;
+                    }
+                }
+            } else {
+                if (strparm[0] == '0' && strparm[1] == 'x')
+                    sscanf(strparm+2, "%x", &parm);
+                else
+                    sscanf(strparm, "%i", &parm);
+                for (i=0 ; i<numdefaults ; i++) {
+                    if (!strcmp(def, defaults[i].name))
+                    {
+                        *defaults[i].location = parm;
+                        break;
+                    }
+                }
+            }
+        }
+    }
 		
 	fclose (f);
     }
