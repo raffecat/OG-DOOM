@@ -229,8 +229,8 @@ typedef struct
 default_t	defaults[] =
 {
     {"mouse_sensitivity",&mouseSensitivity, 5},
-    {"sfx_volume",&snd_SfxVolume, 8},
-    {"music_volume",&snd_MusicVolume, 8},
+    {"sfx_volume",&sfxVolume, 8},
+    {"music_volume",&musicVolume, 8},
     {"show_messages",&showMessages, 1},
     
 
@@ -268,7 +268,7 @@ default_t	defaults[] =
     {"screenblocks",&screenblocks, 10},
     {"detaillevel",&detailLevel, 0},
 
-    {"snd_channels",&numChannels, 3},
+    {"snd_channels",&numChannels, 8},
 
 
 

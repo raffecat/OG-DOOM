@@ -107,13 +107,17 @@ typedef struct
 // the set of channels available
 static channel_t*	channels;
 
-// These are not used, but should be (menu).
+// These are used in the options menu.
 // Maximum volume of a sound effect.
 // Internal default is max out of 0-15.
-int 		snd_SfxVolume = 15;
+int 		sfxVolume = 15;
 
-// Maximum volume of music. Useless so far.
-int 		snd_MusicVolume = 15; 
+// Maximum volume of music.
+int 		musicVolume = 15; 
+
+
+// Derived 0-127 volume used in mixing.
+static int 	snd_SfxVolume = 127;
 
 
 
@@ -284,7 +288,10 @@ S_StartSoundAtVolume
   {
     pitch = sfx->pitch;
     priority = sfx->priority;
-    volume += sfx->volume;
+
+    // FIX? (was +=) the volume passed in is always snd_SfxVolume,
+    // why add it to snd_SfxVolume, then limit to snd_SfxVolume?
+    volume = sfx->volume;
     
     if (volume < 1)
       return;
@@ -386,6 +393,7 @@ S_StartSoundAtVolume
   
   // Assigns the handle to one of the channels in the
   //  mix/output buffer.
+  // Assumes volume in 0..127
   channels[cnum].handle = I_StartSound(sfx_id,
 				       /*sfx->data,*/
 				       volume,
@@ -567,7 +575,11 @@ void S_UpdateSounds(void* listener_p)
 		if (sfx->link)
 		{
 		    pitch = sfx->pitch;
-		    volume += sfx->volume;
+
+		    // FIX? (was +=) volume starts at snd_SfxVolume,
+		    // why add it to snd_SfxVolume, then limit to snd_SfxVolume?
+		    volume = sfx->volume;
+
 		    if (volume < 1)
 		    {
 			S_StopChannel(cnum);
@@ -581,6 +593,7 @@ void S_UpdateSounds(void* listener_p)
 
 		// check non-local sounds for distance clipping
 		//  or modify their params
+		//  Operates in 0-127 volume space.
 		if (c->origin && listener_p != c->origin)
 		{
 		    audible = S_AdjustSoundParams(listener,
@@ -621,9 +634,7 @@ void S_SetMusicVolume(int volume)
 		volume);
     }    
 
-    I_SetMusicVolume(127);
     I_SetMusicVolume(volume);
-    snd_MusicVolume = volume;
 }
 
 
@@ -749,6 +760,7 @@ void S_StopChannel(int cnum)
 //  from the norm of a sound effect to be played.
 // If the sound is not audible, returns a 0.
 // Otherwise, modifies parameters and returns 1.
+//  Operates in 0-127 volume space.
 //
 int
 S_AdjustSoundParams

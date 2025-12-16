@@ -66,8 +66,11 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 
 
 // Needed for calling the actual sound output.
-#define SAMPLECOUNT		512
+#define SAMPLECOUNT		316
+// Number of mixer channels.
 #define NUM_CHANNELS		8
+// Power of two greater/equal to number of mixer channels.
+#define NUM_CHANNELS_POW2	8
 // It is 2 for 16bit, and 2 for two channels.
 #define BUFMUL                  4
 #define MIXBUFFERSIZE		(SAMPLECOUNT*BUFMUL)
@@ -76,61 +79,61 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #define SAMPLESIZE		2   	// 16bit
 
 // The actual lengths of all sound effects.
-int 		lengths[NUMSFX];
+static int 		lengths[NUMSFX];
 
 // The global mixing buffer.
 // Basically, samples from all active internal channels
 //  are modifed and added, and stored in the buffer
 //  that is submitted to the audio device.
-signed short	*mixbuffer; // [MIXBUFFERSIZE]
+static signed short	*mixbuffer; // [MIXBUFFERSIZE]
 
 
 // The channel step amount...
-unsigned int	channelstep[NUM_CHANNELS];
+static unsigned int	channelstep[NUM_CHANNELS];
 // ... and a 0.16 bit remainder of last step.
-unsigned int	channelstepremainder[NUM_CHANNELS];
+static unsigned int	channelstepremainder[NUM_CHANNELS];
 
 
 // The channel data pointers, start and end.
-unsigned char*	channels[NUM_CHANNELS];
-unsigned char*	channelsend[NUM_CHANNELS];
-
+static unsigned char*	channels[NUM_CHANNELS];
+static unsigned char*	channelsend[NUM_CHANNELS];
 
 // Time/gametic that the channel started playing,
 //  used to determine oldest, which automatically
 //  has lowest priority.
 // In case number of active sounds exceeds
 //  available channels.
-int		channelstart[NUM_CHANNELS];
+static int		channelstart[NUM_CHANNELS];
 
-// The sound in channel handles,
-//  determined on registration,
-//  might be used to unregister/stop/modify,
-//  currently unused.
-int 		channelhandles[NUM_CHANNELS];
+// The channel handle, assigned when the sound starts.
+//  used to stop/modify the sound.
+static unsigned int 	channelhandles[NUM_CHANNELS];
 
 // SFX id of the playing sound effect.
 // Used to catch duplicates (like chainsaw).
-int		channelids[NUM_CHANNELS];			
+static int		channelids[NUM_CHANNELS];			
 
 // Pitch to stepping lookup, unused.
-int		steptable[256];
+static int		steptable[256];
 
 // Volume lookups.
-int		vol_lookup[128*256];
+static int		vol_lookup[128*256];
 
 // Hardware left and right channel volume lookup.
-int*		channelleftvol_lookup[NUM_CHANNELS];
-int*		channelrightvol_lookup[NUM_CHANNELS];
+static int*		channelleftvol_lookup[NUM_CHANNELS];
+static int*		channelrightvol_lookup[NUM_CHANNELS];
 
+static unsigned int     nexthandle = 0;
 
+// Derived 0-127 volume used in mixing.
+static int 	snd_MusicVolume = 127;
 
 
 //
 // This function loads the sound data from the WAD lump,
 //  for single sound.
 //
-void*
+static void*
 getsfx
 ( char*         sfxname,
   int*          len )
@@ -209,17 +212,15 @@ getsfx
 //  (eight, usually) of internal channels.
 // Returns a handle.
 //
-int
+static int
 addsfx
 ( int		sfxid,
   int		volume,
   int		step,
   int		seperation )
 {
-    static unsigned short	handlenums = 0;
- 
     int		i;
-    int		rc = -1;
+    int         handle;
     
     int		oldest = gametic;
     int		oldestnum = 0;
@@ -264,9 +265,8 @@ addsfx
     }
 
     // Tales from the cryptic.
-    // If we found a channel, fine.
-    // If not, we simply overwrite the first one, 0.
-    // Probably only happens at startup.
+    // If we reached the end, all channels were playing, oldestnum is the oldest.
+    // If not, we found a channel that wasn't in use and stopped early.
     if (i == NUM_CHANNELS)
 	slot = oldestnum;
     else
@@ -279,18 +279,9 @@ addsfx
     // Set pointer to end of raw data.
     channelsend[slot] = channels[slot] + lengths[sfxid];
 
-    // Reset current handle number, limited to 0..100.
-    if (!handlenums)
-	handlenums = 100;
-
-    // Assign current handle number.
-    // Preserved so sounds could be stopped (unused).
-    channelhandles[slot] = rc = handlenums++;
-
-    // Set stepping???
-    // Kinda getting the impression this is never used.
+    // Set stepping (pitch)
     channelstep[slot] = step;
-    // ???
+    // Initial offset in sample.
     channelstepremainder[slot] = 0;
     // Should be gametic, I presume.
     channelstart[slot] = gametic;
@@ -316,7 +307,7 @@ addsfx
 	I_Error("leftvol out of bounds");
     
     // Get the proper lookup table piece
-    //  for this volume level???
+    //  for this volume level.
     channelleftvol_lookup[slot] = &vol_lookup[leftvol*256];
     channelrightvol_lookup[slot] = &vol_lookup[rightvol*256];
 
@@ -324,8 +315,11 @@ addsfx
     //  e.g. for avoiding duplicates of chainsaw.
     channelids[slot] = sfxid;
 
-    // You tell me.
-    return rc;
+    // Handle returned is next handle number combined with slot index.
+    channelhandles[slot] = nexthandle;
+    handle = nexthandle | (unsigned int)slot;
+    nexthandle += NUM_CHANNELS_POW2; // inc high bits above slot.
+    return handle;
 }
 
 
@@ -355,10 +349,10 @@ void I_SetChannels()
   mixbuffer = Buffer_Create(ddev_mixbuf, MIXBUFFERSIZE, 0);
   
   // Okay, reset internal mixing channels to zero.
-  /*for (i=0; i<NUM_CHANNELS; i++)
+  for (i=0; i<NUM_CHANNELS; i++)
   {
     channels[i] = 0;
-  }*/
+  }
 
   // This table provides step widths for pitch parameters.
   // I fail to see that this is currently used.
@@ -375,18 +369,18 @@ void I_SetChannels()
 }	
 
  
-void I_SetSfxVolume(int volume)
+void I_SetSfxVolume(int volume) // 0-127
 {
   // Identical to DOS.
   // Basically, this should propagate
   //  the menu/config file setting
   //  to the state variable used in
   //  the mixing.
-  snd_SfxVolume = volume;
+  // This is handled via I_StartSound and I_UpdateSoundParams.
 }
 
-// MUSIC API - dummy. Some code from DOS version.
-void I_SetMusicVolume(int volume)
+// MUSIC API. Some code from DOS version.
+void I_SetMusicVolume(int volume) // 0-127
 {
   // Internal state variable.
   snd_MusicVolume = volume;
@@ -426,6 +420,7 @@ I_StartSound
   int		pitch,
   int		priority )
 {
+  int           handle;
 
   // UNUSED
   priority = 0;
@@ -434,31 +429,47 @@ I_StartSound
   //fprintf( stderr, "starting sound %d", id );
   
   // Returns a handle (not used).
-  id = addsfx( id, vol, steptable[pitch], sep );
+  // Assumes volume in 0..127
+  handle = addsfx( id, vol, steptable[pitch], sep );
 
   // fprintf( stderr, "/handle is %d\n", id );
   
-  return id;
+  return handle;
 }
 
 
 
 void I_StopSound (int handle)
 {
+  unsigned int h = handle; // modern UB.
+
   // You need the handle returned by StartSound.
   // Would be looping all channels,
   //  tracking down the handle,
   //  an setting the channel to zero.
   
-  // UNUSED.
-  handle = 0;
+  int slot = h & (NUM_CHANNELS_POW2-1);
+
+  // Check if the slot is still playing the same handle.
+  if (channels[slot] && channelhandles[slot] == (h & ~(NUM_CHANNELS_POW2-1))) {
+	// Reset.
+	channels[slot] = 0;
+  }
 }
 
 
 int I_SoundIsPlaying(int handle)
 {
-    // Ouch.
-    return gametic < handle;
+  unsigned int h = handle; // modern UB.
+
+  int slot = h & (NUM_CHANNELS_POW2-1);
+
+  // Check if the slot is still playing the same handle.
+  if (channels[slot] && channelhandles[slot] == (h & ~(NUM_CHANNELS_POW2-1))) {
+	return 1;
+  }
+
+  return 0;
 }
 
 
@@ -531,11 +542,11 @@ void I_UpdateSound( void )
 		// Adjust volume accordingly.
 		dl += channelleftvol_lookup[ chan ][sample];
 		dr += channelrightvol_lookup[ chan ][sample];
-		// Increment index ???
+		// Apply pitch step to offset, 16.16 fixed point.
 		channelstepremainder[ chan ] += channelstep[ chan ];
-		// MSB is next sample???
+		// Advance by integer part in high 16 bits.
 		channels[ chan ] += channelstepremainder[ chan ] >> 16;
-		// Limit to LSB???
+		// Throw away integer part, keep remainder.
 		channelstepremainder[ chan ] &= 65536-1;
 
 		// Check whether we are done.
@@ -592,17 +603,53 @@ I_SubmitSound(void)
 void
 I_UpdateSoundParams
 ( int	handle,
-  int	vol,
-  int	sep,
+  int	volume,
+  int	seperation,
   int	pitch)
 {
-  // I fail too see that this is used.
-  // Would be using the handle to identify
-  //  on which channel the sound might be active,
-  //  and resetting the channel parameters.
+  int		rightvol;
+  int		leftvol;
 
-  // UNUSED.
-  handle = vol = sep = pitch = 0;
+  unsigned int h = handle; // modern UB.
+
+  // Use the handle to identify
+  //  on which channel the sound might be active,
+  //  and reset the channel parameters.
+
+  int slot = h & (NUM_CHANNELS_POW2-1);
+
+  // Check if the slot is still playing the same handle.
+  if (channels[slot] && channelhandles[slot] == (h & ~(NUM_CHANNELS_POW2-1))) {
+	
+    // Set stepping (pitch)
+    channelstep[slot] = steptable[pitch];
+
+    // Separation, that is, orientation/stereo.
+    //  range is: 1 - 256
+    seperation += 1;
+
+    // Per left/right channel.
+    //  x^2 seperation,
+    //  adjust volume properly.
+    leftvol =
+	volume - ((volume*seperation*seperation) >> 16); ///(256*256);
+    seperation = seperation - 257;
+    rightvol =
+	volume - ((volume*seperation*seperation) >> 16);	
+
+    // Sanity check, clamp volume.
+    if (rightvol < 0 || rightvol > 127)
+	I_Error("rightvol out of bounds");
+    
+    if (leftvol < 0 || leftvol > 127)
+	I_Error("leftvol out of bounds");
+    
+    // Get the proper lookup table piece
+    //  for this volume level.
+    channelleftvol_lookup[slot] = &vol_lookup[leftvol*256];
+    channelrightvol_lookup[slot] = &vol_lookup[rightvol*256];
+
+  }
 }
 
 
