@@ -48,7 +48,7 @@ rcsid[] = "$Id: m_bbox.c,v 1.1 1997/02/03 22:45:10 b1 Exp $";
 
 
 
-int	mb_used = 6;
+int	mb_used = 20; // 6;
 
 
 void
@@ -83,7 +83,7 @@ byte* I_ZoneBase (int*	size)
 
 //
 // I_GetTime
-// returns time in 1/70th second tics
+// returns time in 1/35th second tics
 //
 int  I_GetTime (void)
 {
@@ -99,6 +99,26 @@ int  I_GetTime (void)
     return newtics;
 }
 
+
+#define MUSICRATE 140
+
+//
+// I_GetSoundTime
+// returns time in 1/140th second tics (140 Hz)
+//
+int  I_GetSoundTime (void)
+{
+    struct timeval	tp;
+    struct timezone	tzp;
+    int			newtics;
+    static int		basesoundtime=0;
+  
+    gettimeofday(&tp, &tzp);
+    if (!basesoundtime)
+	basesoundtime = tp.tv_sec;
+    newtics = (tp.tv_sec-basesoundtime)*MUSICRATE + tp.tv_usec*MUSICRATE/1000000;
+    return newtics;
+}
 
 
 //

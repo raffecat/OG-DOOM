@@ -1103,7 +1103,7 @@ void D_DoomMain (void)
     D_CheckNetGame ();
 
     printf ("S_Init: Setting up sound.\n");
-    S_Init (sfxVolume * 8, sfxVolume * 8 );
+    S_Init (sfxVolume * 8, musicVolume * 8 );
 
     printf ("HU_Init: Setting up heads up display.\n");
     HU_Init ();

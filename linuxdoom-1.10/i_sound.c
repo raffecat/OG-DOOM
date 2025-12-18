@@ -58,6 +58,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include "doomdef.h"
 #include "i_device.h"
 
+#include "adlibemu.h"
+#include "musplayer.h"
+
 
 // The number of internal mixing channels,
 //  the samples calculated for each mixing step,
@@ -65,8 +68,8 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 //  mixing buffer, and the samplerate of the raw data.
 
 
-// Needed for calling the actual sound output.
-#define SAMPLECOUNT		316
+// Needed for calling the actual sound output. 316  316*4
+#define SAMPLECOUNT		360*4
 // Number of mixer channels.
 #define NUM_CHANNELS		8
 // Power of two greater/equal to number of mixer channels.
@@ -75,8 +78,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #define BUFMUL                  4
 #define MIXBUFFERSIZE		(SAMPLECOUNT*BUFMUL)
 
-#define SAMPLERATE		11025	// Hz
-#define SAMPLESIZE		2   	// 16bit
+// 11025*4
+#define SAMPLERATE		49716
+#define SAMPLESIZE		2
 
 // The actual lengths of all sound effects.
 static int 		lengths[NUMSFX];
@@ -87,6 +91,7 @@ static int 		lengths[NUMSFX];
 //  that is submitted to the audio device.
 static signed short	*mixbuffer; // [MIXBUFFERSIZE]
 
+static int16_t          music_mixbuffer[SAMPLECOUNT];
 
 // The channel step amount...
 static unsigned int	channelstep[NUM_CHANNELS];
@@ -126,8 +131,11 @@ static int*		channelrightvol_lookup[NUM_CHANNELS];
 static unsigned int     nexthandle = 0;
 
 // Derived 0-127 volume used in mixing.
-static int 	snd_MusicVolume = 127;
-
+static int 	music_paused = 0;
+static int 	music_playing = 0;
+static void*    music_data = 0;
+static int      music_lasttic = 0;
+static int      music_volume = 63;
 
 //
 // This function loads the sound data from the WAD lump,
@@ -366,6 +374,18 @@ void I_SetChannels()
   for (i=0 ; i<128 ; i++)
     for (j=0 ; j<256 ; j++)
       vol_lookup[i*256+j] = (i*(j-128)*256)/127;
+
+  // Find the GENMIDI chunk and register instruments.
+  int op2lump = W_CheckNumForName("GENMIDI");
+  if ( op2lump == -1 )
+    op2lump = W_GetNumForName("GENMIDI.OP2");
+    
+  char *op2 = W_CacheLumpNum( op2lump, PU_STATIC );
+
+  musplay_op2bank(op2+8); // skip "#OPL_II#" to get BYTE[175][36] instrument data
+
+  // Remove the cached lump.
+  Z_Free( op2 );
 }	
 
  
@@ -382,10 +402,9 @@ void I_SetSfxVolume(int volume) // 0-127
 // MUSIC API. Some code from DOS version.
 void I_SetMusicVolume(int volume) // 0-127
 {
-  // Internal state variable.
-  snd_MusicVolume = volume;
-  // Now set volume on output device.
-  // Whatever( snd_MusciVolume );
+  // Set the music mixing volume ramp.
+  if (volume > 127) volume = 127;
+  music_volume = volume;
 }
 
 
@@ -506,7 +525,24 @@ void I_UpdateSound( void )
 
   // Mixing channel index.
   int				chan;
+
+  int                   music_on;
+  int16_t*              musicsample;
     
+    music_on = music_playing && !music_paused;
+    musicsample = music_mixbuffer;
+    if (music_on) {
+	// advance the score, update adlib state.
+	int thistic = I_GetSoundTime(); // in 1/140ths (140 Hz)
+	int numtics = thistic - music_lasttic;
+	music_lasttic = thistic;
+	if (numtics > 0) {
+		music_playing = musplay_update(numtics);
+	}
+	// pull some samples from adlib.
+	adlib_getsample(&music_mixbuffer[0], SAMPLECOUNT);
+    }
+
     // Left and right channel
     //  are in global mixbuffer, alternating.
     leftout = mixbuffer;
@@ -554,7 +590,17 @@ void I_UpdateSound( void )
 		    channels[ chan ] = 0;
 	    }
 	}
-	
+
+	if (music_on) {
+		int sample = *musicsample++;  // sample 1
+		// sample += *musicsample++;     // sample 2
+		// sample += *musicsample++;     // sample 3
+		// sample += *musicsample++;     // sample 4
+		sample = (sample * music_volume) >> 7;
+		dl += sample;
+		dr += sample;
+	}
+
 	// Clamp to range. Left hardware channel.
 	// Has been char instead of short.
 	// if (dl > 127) *leftout = 127;
@@ -719,6 +765,10 @@ I_InitSound()
   }
 
   fprintf( stderr, " pre-cached all sound data\n");
+
+  adlib_init(SAMPLERATE);
+
+  fprintf( stderr, " initialised adlib player\n");
   
   // Now initialize mixbuffer with zero.
   // for ( i = 0; i< MIXBUFFERSIZE; i++ )
@@ -739,25 +789,28 @@ I_InitSound()
 void I_InitMusic(void)		{ }
 void I_ShutdownMusic(void)	{ }
 
-static int	looping=0;
-static int	musicdies=-1;
-
-void I_PlaySong(int handle, int looping)
+void I_PlaySong(int handle, int loop)
 {
   // UNUSED.
-  handle = looping = 0;
-  musicdies = gametic + TICRATE*30;
+  handle = 0;
+  if (music_data) {
+	musplay_play(music_data, loop);
+	music_lasttic = I_GetSoundTime();
+	music_playing = 1;
+  }
 }
 
 void I_PauseSong (int handle)
 {
   // UNUSED.
+  music_paused = 1;
   handle = 0;
 }
 
 void I_ResumeSong (int handle)
 {
   // UNUSED.
+  music_paused = 0;
   handle = 0;
 }
 
@@ -766,8 +819,8 @@ void I_StopSong(int handle)
   // UNUSED.
   handle = 0;
   
-  looping = 0;
-  musicdies = 0;
+  music_playing = 0;
+  musplay_stop();
 }
 
 void I_UnRegisterSong(int handle)
@@ -779,7 +832,10 @@ void I_UnRegisterSong(int handle)
 int I_RegisterSong(void* data)
 {
   // UNUSED.
-  data = NULL;
+  // Always registered just before I_PlaySong.
+  // Always unregistered I_UnRegisterSong just after I_StopSong.
+  // Music lump data. Returns handle.
+  music_data = data;
   
   return 1;
 }
@@ -789,5 +845,5 @@ int I_QrySongPlaying(int handle)
 {
   // UNUSED.
   handle = 0;
-  return looping || musicdies > gametic;
+  return music_playing;
 }
