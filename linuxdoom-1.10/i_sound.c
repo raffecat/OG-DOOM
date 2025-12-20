@@ -142,7 +142,6 @@ static int 	music_paused = 0;
 static int 	music_playing = 0;
 static void*    music_data = 0;
 static int      music_lasttic = 0;
-static int      music_volume = 63;
 #ifdef OPL_NUKED
 static opl3_chip music_opl3 = {0};
 
@@ -416,9 +415,8 @@ void I_SetSfxVolume(int volume) // 0-127
 // MUSIC API. Some code from DOS version.
 void I_SetMusicVolume(int volume) // 0-127
 {
-  // Set the music mixing volume ramp.
-  if (volume > 127) volume = 127;
-  music_volume = volume;
+  // Set the music player volume.
+  musplay_volume(volume);
 }
 
 
@@ -611,12 +609,10 @@ void I_UpdateSound( void )
 
 	if (music_on) {
 		int sample = *musicsample++;  // left channel
-		sample = (sample * music_volume) >> 7;
 		dl += sample;
 #if OPLTYPE_IS_OPL3 || OPL_NUKED
 		// OPL3 generates a stereo pair for each sample.
 		sample = *musicsample++;  // right channel
-		sample = (sample * music_volume) >> 7;
 		dr += sample;
 #endif
 	}
