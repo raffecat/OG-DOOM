@@ -33,19 +33,9 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include <sys/time.h>
 #include <sys/types.h>
 
-#ifndef LINUX
-#include <sys/filio.h>
-#endif
-
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-
-// Linux voxware output.
-// #include <linux/soundcard.h>
-
-// Timer stuff. Experimental.
-#include <time.h>
 
 #include "z_zone.h"
 
@@ -58,7 +48,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #include "doomdef.h"
 #include "i_device.h"
 
-#ifdef OPL_NUKED
+#if defined(OPL_NUKED)
 #include "opl3.h"
 #else
 void adlib_init(uint32_t samplerate);
@@ -73,9 +63,12 @@ void adlib_getsample(int16_t* sndptr, intptr_t numsamples);
 //  the size of the 16bit, 2 hardware channel (stereo)
 //  mixing buffer, and the samplerate of the raw data.
 
-
+// Step shift (divider) 1 for 22050, 2 for 44100
+#define STEP_SHIFT              1
+// Sample rate multiplier (over 11025) to make it easier to change (a hack)
+#define SR_MULTIPLIER           2
 // Needed for calling the actual sound output. 316  316*4  356*4
-#define SAMPLECOUNT		356*4
+#define SAMPLECOUNT		316*SR_MULTIPLIER
 // Number of mixer channels.
 #define NUM_CHANNELS		8
 // Power of two greater/equal to number of mixer channels.
@@ -85,7 +78,7 @@ void adlib_getsample(int16_t* sndptr, intptr_t numsamples);
 #define MIXBUFFERSIZE		(SAMPLECOUNT*BUFMUL)
 
 // 11025*4  44100  49716
-#define SAMPLERATE		49716
+#define SAMPLERATE		11025*SR_MULTIPLIER
 #define SAMPLESIZE		2
 
 // The actual lengths of all sound effects.
@@ -98,7 +91,7 @@ static int 		lengths[NUMSFX];
 static signed short	*mixbuffer; // [MIXBUFFERSIZE]
 
 // OPL3 generates a stereo pair for each sample.
-static int16_t          music_mixbuffer[SAMPLECOUNT*2];
+static int16_t          music_mixbuffer[SAMPLECOUNT*SR_MULTIPLIER];
 
 // The channel step amount...
 static unsigned int	channelstep[NUM_CHANNELS];
@@ -142,7 +135,7 @@ static int 	music_paused = 0;
 static int 	music_playing = 0;
 static void*    music_data = 0;
 static int      music_lasttic = 0;
-#ifdef OPL_NUKED
+#if defined(OPL_NUKED)
 static opl3_chip music_opl3 = {0};
 
 void adlib_write(int reg, int val) {
@@ -504,6 +497,21 @@ int I_SoundIsPlaying(int handle)
 }
 
 
+static void mix_music(void) {
+	// advance the score, update adlib state.
+	int thistic = I_GetSoundTime(); // in 1/140ths (140 Hz)
+	int numtics = thistic - music_lasttic;
+	music_lasttic = thistic;
+	if (numtics > 0) {
+		music_playing = musplay_update(numtics);
+	}
+	// pull some samples from OPL.
+#if defined(OPL_NUKED)
+	OPL3_GenerateStream(&music_opl3, music_mixbuffer, SAMPLECOUNT);
+#else
+	adlib_getsample(music_mixbuffer, SAMPLECOUNT);
+#endif
+}
 
 
 //
@@ -538,25 +546,11 @@ void I_UpdateSound( void )
   // Mixing channel index.
   int				chan;
 
-  int                   music_on;
-  int16_t*              musicsample;
+  int                   music_on = music_playing && !music_paused;
+  int16_t*              musicsample = music_mixbuffer;
     
-    music_on = music_playing && !music_paused;
-    musicsample = music_mixbuffer;
     if (music_on) {
-	// advance the score, update adlib state.
-	int thistic = I_GetSoundTime(); // in 1/140ths (140 Hz)
-	int numtics = thistic - music_lasttic;
-	music_lasttic = thistic;
-	if (numtics > 0) {
-		music_playing = musplay_update(numtics);
-	}
-	// pull some samples from OPL.
-#ifdef OPL_NUKED
-	OPL3_GenerateStream(&music_opl3, music_mixbuffer, SAMPLECOUNT);
-#else
-	adlib_getsample(music_mixbuffer, SAMPLECOUNT);
-#endif
+	mix_music();
     }
 
     // Left and right channel
@@ -610,7 +604,7 @@ void I_UpdateSound( void )
 	if (music_on) {
 		int sample = *musicsample++;  // left channel
 		dl += sample;
-#if OPLTYPE_IS_OPL3 || OPL_NUKED
+#if defined(OPLTYPE_IS_OPL3) || defined(OPL_NUKED)
 		// OPL3 generates a stereo pair for each sample.
 		sample = *musicsample++;  // right channel
 		dr += sample;
@@ -684,7 +678,7 @@ I_UpdateSoundParams
   if (channels[slot] && channelhandles[slot] == (h & ~(NUM_CHANNELS_POW2-1))) {
 	
     // Set stepping (pitch)
-    channelstep[slot] = steptable[pitch];
+    channelstep[slot] = steptable[pitch] >> STEP_SHIFT;
 
     // Separation, that is, orientation/stereo.
     //  range is: 1 - 256
@@ -782,7 +776,7 @@ I_InitSound()
 
   fprintf( stderr, " pre-cached all sound data\n");
 
-#ifdef OPL_NUKED
+#if defined(OPL_NUKED)
   OPL3_Reset(&music_opl3, SAMPLERATE);
 #else
   adlib_init(SAMPLERATE);

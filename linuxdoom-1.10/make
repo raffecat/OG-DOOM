@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 
-OPL=woody-opl
-#OPL=Nuked-OPL3
+OPL=woody-opl    # use -DOPLTYPE_IS_OPL3 (needs OPL3)
+#OPL=Nuked-OPL3  # use -DOPL_NUKED
 
-clang -g -Wall -DNORMALUNIX=1 -DOPLTYPE_IS_OPL3=1 \
+clang -g -Wall -DNORMALUNIX=1 -DOPLTYPE_IS_OPL3 \
   -I../platform -I../thirdparty/musplayer \
   -I../thirdparty/$OPL \
   -I /opt/homebrew/Cellar/sdl2/2.32.0/include \
