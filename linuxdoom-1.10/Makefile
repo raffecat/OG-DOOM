@@ -4,14 +4,48 @@
 #
 # $Log:$
 #
-CC=  gcc  # gcc or g++
+CC= clang  # gcc or g++ or clang
 
-CFLAGS=-g -Wall -DNORMALUNIX -DLINUX # -DUSEASM 
-LDFLAGS=-L/usr/X11R6/lib
-LIBS=-lXext -lX11 -lnsl -lm
+OS_NAME := $(shell uname -s | tr A-Z a-z)
+ifeq ($(OS_NAME),linux)
+
+$(info Linux build.)
+SDL_I := $(shell sdl2-config --cflags)
+SDL_L := $(shell sdl2-config --libs)
+ifeq ($(SDL_I),)
+$(error "sdl2-config --cflags" didn't return anything - is SDL2 installed?)
+endif
+
+else ifeq ($(OS_NAME),darwin)
+
+$(info Mac OS build.)
+BREW := $(shell brew --prefix)
+ifeq ($(BREW),)
+$(error "brew --prefix" didn't return a path - is Homebrew installed?)
+endif
+SDL := $(shell brew --prefix sdl2)
+ifeq ($(SDL),)
+$(error "brew --prefix sdl2" didn't return a path - is SDL2 installed?)
+endif
+SDL_I := -I$(SDL)/include
+SDL_L := -L$(SDL)/lib
+
+endif
+
+
+CFLAGS+=-g -Wall \
+	-DNORMALUNIX \
+	-DOPLTYPE_IS_OPL3 \
+	-I../platform \
+	-I../thirdparty/musplayer \
+	$(SDL_I) \
+	# -DUSEASM
+LDFLAGS+=$(SDL_L)
+LIBS+=-lm -lSDL2 # -lnsl
 
 # subdirectory for objects
-O=linux
+O=build
+BIN=..
 
 # not too sophisticated dependency
 OBJS=				\
@@ -75,20 +109,36 @@ OBJS=				\
 		$(O)/s_sound.o		\
 		$(O)/z_zone.o			\
 		$(O)/info.o				\
-		$(O)/sounds.o
+		$(O)/sounds.o		\
+		$(O)/musplayer.o		\
+		$(O)/opl.o		\
+		$(O)/qrt_system.o		\
+		$(O)/qrt_services.o
 
-all:	 $(O)/linuxxdoom
+
+
+all:	 $(BIN)/doom
 
 clean:
 	rm -f *.o *~ *.flc
-	rm -f linux/*
+	rm -f build/*
 
-$(O)/linuxxdoom:	$(OBJS) $(O)/i_main.o
+$(BIN)/doom:	$(OBJS) $(O)/i_main.o
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJS) $(O)/i_main.o \
-	-o $(O)/linuxxdoom $(LIBS)
+	-o $(BIN)/doom $(LIBS)
 
 $(O)/%.o:	%.c
 	$(CC) $(CFLAGS) -c $< -o $@
+
+$(O)/musplayer.o:	../thirdparty/musplayer/musplayer.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(O)/opl.o:		../thirdparty/woody-opl/opl.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(O)/qrt_%.o:		../platform/qrt_%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 
 #############################################################
 #
