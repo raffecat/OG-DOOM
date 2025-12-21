@@ -316,6 +316,10 @@ void FrameBuffer_Create(cap_t cap, FrameBuffer_Opts opts, size_t width, size_t h
 void FrameBuffer_Configure(cap_t fb_cap, FrameBuffer_Opts opts, size_t width, size_t height, size_t bpp, cap_t queue_cap) {
 }
 
+void FrameBuffer_SetTitle(cap_t fb_cap, const char* title) {
+	SDL_SetWindowTitle(window, title);
+}
+
 void FrameBuffer_SetPalette(cap_t fb_cap, cap_t buf_cap) {
     uint32_t* pal = caps[buf_cap].buf;
     if (caps[buf_cap].size == 256*4) {

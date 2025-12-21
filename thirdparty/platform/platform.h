@@ -80,6 +80,7 @@ typedef struct FrameBuffer_SyncEventE {
 
 void FrameBuffer_Create(cap_t fb_cap, FrameBuffer_Opts opts, size_t width, size_t height, size_t bpp, cap_t queue_cap);
 void FrameBuffer_Configure(cap_t fb_cap, FrameBuffer_Opts opts, size_t width, size_t height, size_t bpp, cap_t queue_cap);
+void FrameBuffer_SetTitle(cap_t fb_cap, const char* title);
 void FrameBuffer_SetPalette(cap_t fb_cap, cap_t buf_cap); // XXX transfer or share buffer?
 void FrameBuffer_Submit(cap_t fb_cap, cap_t buf_cap); // TRANSFER buffer from Video 'Frame' event
 

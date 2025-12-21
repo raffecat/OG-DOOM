@@ -3,9 +3,9 @@
         {
             "label": "Build Project",
             "type": "shell",
-            "command": "${workspaceFolder}/linuxdoom-1.10/make",
+            "command": "${workspaceFolder}/make",
             "options": {
-                "cwd": "${workspaceFolder}/linuxdoom-1.10" // VSBS
+                "cwd": "${workspaceFolder}" // VSBS
             },
             "group": {
                 "kind": "build",

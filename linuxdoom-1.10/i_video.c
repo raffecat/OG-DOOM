@@ -470,6 +470,7 @@ void I_InitGraphics(void)
 
     // create the main window
 	FrameBuffer_Create(ddev_fb, FrameBuffer_DoubleBuffer|FrameBuffer_Palette|FrameBuffer_NoSmooth, SCREENWIDTH, SCREENHEIGHT, 8, ddev_main_q);
+	FrameBuffer_SetTitle(ddev_fb, "the OG");
 
 	// create palette
 	// XXX do we create this buffer or does the FrameBuffer?
