@@ -273,12 +273,14 @@ int Storage_DeleteObject(const char* name) {
 
 // FRAMEBUFFER
 
+#define FB_SCALE 3
+
 void FrameBuffer_Create(cap_t cap, FrameBuffer_Opts opts, size_t width, size_t height, size_t bpp, cap_t queue) {
     fb_cap = cap;
     fb_width = width;
     fb_height = height;
-    fb_disp_width = width * 2;
-    fb_disp_height = height * 2;
+    fb_disp_width = width * FB_SCALE;
+    fb_disp_height = height * FB_SCALE;
     window = SDL_CreateWindow(
         "Framebuffer",
         SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
@@ -335,30 +337,21 @@ void FrameBuffer_Submit(cap_t fb_cap, cap_t buf_cap) {
         return;
     }
     // fill the texture (perform palette mapping)
-    uint8_t* src_row = caps[buf_cap].buf; // submitted buffer
-    if (!src_row) return;
+    uint8_t* src_buf = caps[buf_cap].buf; // submitted buffer
+    uint32_t row_ofs = 0, col_ofs = 0, one_step = 65536/FB_SCALE;
+    if (!src_buf) return;
     char* dst_row = pixels; // pitch is in bytes
-    for (int y=0; y<fb_height; y++) {
+    for (int y=0; y<fb_disp_height; y++) {
         // first WINDOW row
-        char* dst_next_row = dst_row + pitch;
-        uint32_t* to1 = (uint32_t*)dst_row;
-        uint32_t* to2 = (uint32_t*)dst_next_row;
-        uint8_t* from = src_row;
-        for (int x=0; x<fb_width; x++) {
-            // window must be TWICE as high as FB
-            // window must be TWICE as wide as FB
-            // fill four pixels:
-            uint32_t px = palette[from[0]];
-            to1[0] = px;
-            to1[1] = px;
-            to2[0] = px;
-            to2[1] = px;
-            to1 += 2;
-            to2 += 2;
-            from += 1;
+        uint32_t* to = (uint32_t*)dst_row;
+        uint8_t* from = src_buf + (row_ofs>>16) * fb_width;
+        for (int x=0; x<fb_disp_width; x++) {
+            *to++ = palette[from[col_ofs>>16]];
+            col_ofs += one_step;
         }
-        dst_row += pitch + pitch; // advance two rows
-        src_row += fb_width;      // advance one row
+        dst_row += pitch;
+	row_ofs += one_step;
+	col_ofs = 0;
     }
     // display the frame.
     SDL_UnlockTexture(texture);
