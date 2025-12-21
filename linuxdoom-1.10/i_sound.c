@@ -381,16 +381,12 @@ void I_SetChannels()
     for (j=0 ; j<256 ; j++)
       vol_lookup[i*256+j] = (i*(j-128)*256)/127;
 
-  // Find the GENMIDI chunk and register instruments.
-  int op2lump = W_CheckNumForName("GENMIDI");
+  // Find the GENMIDI lump and register instruments.
+  int op2lump = W_CheckNumForName("GENMIDI.OP2");
   if ( op2lump == -1 )
-    op2lump = W_GetNumForName("GENMIDI.OP2");
-    
+    op2lump = W_GetNumForName("GENMIDI");
   char *op2 = W_CacheLumpNum( op2lump, PU_STATIC );
-
   musplay_op2bank(op2+8); // skip "#OPL_II#" to get BYTE[175][36] instrument data
-
-  // Remove the cached lump.
   Z_Free( op2 );
 }	
 
@@ -808,7 +804,7 @@ void I_PlaySong(int handle, int loop)
   // UNUSED.
   handle = 0;
   if (music_data) {
-	musplay_play(music_data, loop);
+	musplay_start(music_data, loop);
 	music_lasttic = I_GetSoundTime();
 	music_playing = 1;
   }
