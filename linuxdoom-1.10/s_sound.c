@@ -353,7 +353,8 @@ S_StartSoundAtVolume
   }
 
   // kill old sound
-  S_StopSound(origin);
+  if (origin)
+  	S_StopSound(origin);
 
   // try to find a channel
   cnum = S_getChannel(origin, sfx);
@@ -371,7 +372,6 @@ S_StartSoundAtVolume
   if (sfx->lumpnum < 0)
     sfx->lumpnum = I_GetSfxLumpNum(sfx);
 
-#ifndef SNDSRV
   // cache data if necessary
   if (!sfx->data)
   {
@@ -383,9 +383,8 @@ S_StartSoundAtVolume
     // fprintf( stderr,
     //	     "S_StartSoundAtVolume: loading %d (lump %d) : 0x%x\n",
     //       sfx_id, sfx->lumpnum, (int)sfx->data );
-    
+    return;
   }
-#endif
   
   // increase the usefulness
   if (sfx->usefulness++ < 0)
