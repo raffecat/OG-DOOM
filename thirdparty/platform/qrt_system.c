@@ -42,10 +42,12 @@ static int snd_playing = 0;
 
 static SDL_Event event;
 
+static uint16_t ptr_btns = 0;
+static int ptr_relative = 0;
+
 static FrameBuffer_FrameEvent fb_frame;
 static Input_KeyEvent key_event;
-//static Input_ButtonEvent btn_event;
-//static Input_PointerEvent ptr_event;
+static Input_PointerEvent ptr_event;
 static MasqEvent gen_event;
 
 static void masq_sdl_exit(void) {
@@ -63,6 +65,7 @@ void System_Init(void) {
     if (SDL_Init(SDL_INIT_VIDEO|SDL_INIT_AUDIO|SDL_INIT_EVENTS) < 0) {
         printf("[RT] SDL_Init: %s\n", SDL_GetError());
     }
+    // SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_WARP, "1");
     user_sdl_events = SDL_RegisterEvents(1);
     qrt_main_mutex = SDL_CreateMutex();
     qrt_main_thread_id = SDL_ThreadID();
@@ -222,7 +225,8 @@ void Queue_Wait(cap_t q_cap) {
 static MasqEvent no_event = {{-1,0,0}};
 
 static uint16_t hid_mods(uint16_t mod) {
-    // SDL has the same idea, but a different mapping.
+    // SDL uses < R-L-R-L-R-L-R-L : shift, ctrl, alt, meta
+    // USB uses < R-R-R-R-L-L-L-L : ctrl, shift, alt, meta
     uint16_t mods = 0;
     if (mod & KMOD_LSHIFT) mods |= MasqKeyModifierLShift;
     if (mod & KMOD_LCTRL) mods |= MasqKeyModifierLCtrl;
@@ -236,6 +240,26 @@ static uint16_t hid_mods(uint16_t mod) {
     if (mod & KMOD_CAPS) mods |= MasqKeyModifierCapsLock;
     return mods;
 }
+
+static uint16_t hid_buttons(uint32_t btns) {
+    // SDL uses < 5-4-R-M-L
+    // USB uses < 5-4-M-R-L
+    return (btns & SDL_BUTTON_LMASK) |
+            ((btns & SDL_BUTTON_RMASK) >> 1) |
+            ((btns & SDL_BUTTON_MMASK) << 1) |
+            (btns & (0xF8)); // 5 numbered buttons
+}
+
+static uint16_t hid_btn_map[8] = {
+    Input_ButtonLeft,
+    Input_ButtonRight,
+    Input_ButtonMiddle,
+    Input_Button4,
+    Input_Button5,
+    Input_Button6,
+    Input_Button7,
+    Input_Button8,
+};
 
 MasqEventHeader* Queue_Read(cap_t q_cap) {
     // Pump SDL events.
@@ -252,7 +276,7 @@ MasqEventHeader* Queue_Read(cap_t q_cap) {
                 key_event.h.event = Input_KeyDown;
                 key_event.h.size = sizeof(Input_KeyEvent);
                 key_event.keycode = event.key.keysym.scancode; // USB usage (same as Input_KeyCode)
-                key_event.modifiers = hid_mods(event.key.keysym.mod);
+                key_event.modifiers = hid_mods(event.key.keysym.mod); // USB usage
                 return &key_event.h;
             }
             case SDL_KEYUP: {
@@ -260,25 +284,68 @@ MasqEventHeader* Queue_Read(cap_t q_cap) {
                 key_event.h.event = Input_KeyUp;
                 key_event.h.size = sizeof(Input_KeyEvent);
                 key_event.keycode = event.key.keysym.scancode; // USB usage (same as Input_KeyCode)
-                key_event.modifiers = hid_mods(event.key.keysym.mod);
+                key_event.modifiers = hid_mods(event.key.keysym.mod); // USB usage
                 return &key_event.h;
             }
             case SDL_MOUSEMOTION: {
-
+                ptr_event.h.cap = 4; // ddev_input
+                ptr_event.h.event = Input_PointerMove;
+                ptr_event.h.size = sizeof(Input_PointerEvent);
+                // if (ptr_relative) {
+                    ptr_event.x = event.motion.xrel;
+                    ptr_event.y = event.motion.yrel;
+                // } else {
+                //     ptr_event.x = event.motion.x;
+                //     ptr_event.y = event.motion.y;
+                // }
+                ptr_event.buttons = ptr_btns = hid_buttons(event.motion.state); // USB usage
+                return &ptr_event.h;
             }
             case SDL_MOUSEBUTTONDOWN: {
+                ptr_event.h.cap = 4; // ddev_input
+                ptr_event.h.event = Input_ButtonDown;
+                ptr_event.h.size = sizeof(Input_PointerEvent);
+                ptr_event.x = event.button.x;
+                ptr_event.y = event.button.y;
+                ptr_btns |= hid_btn_map[(event.button.button-1) & 7]; // USB usage
+                ptr_event.buttons = ptr_btns;
+                return &ptr_event.h;
             }
             case SDL_MOUSEBUTTONUP: {
-
+                ptr_event.h.cap = 4; // ddev_input
+                ptr_event.h.event = Input_ButtonUp;
+                ptr_event.h.size = sizeof(Input_PointerEvent);
+                ptr_event.x = event.button.x;
+                ptr_event.y = event.button.y;
+                ptr_btns &= ~hid_btn_map[(event.button.button-1) & 7]; // USB usage
+                ptr_event.buttons = ptr_btns;
+                return &ptr_event.h;
             }
             case SDL_MOUSEWHEEL: {
-
+                return &no_event.h;
             }
-            case SDL_WINDOWEVENT_FOCUS_GAINED: {
-                // SDL_SetRelativeMouseMode(SDL_TRUE);
-            }
-            case SDL_WINDOWEVENT_FOCUS_LOST: {
-                // SDL_SetRelativeMouseMode(SDL_FALSE);
+            case SDL_WINDOWEVENT: {
+                switch (event.window.event) {
+                    case SDL_WINDOWEVENT_ENTER:
+                    case SDL_WINDOWEVENT_FOCUS_GAINED: {
+                        printf("SDL_WINDOWEVENT_FOCUS_GAINED\n");
+                        if (!ptr_relative) {
+                            ptr_relative = 1;
+                            SDL_SetRelativeMouseMode(SDL_TRUE);
+                        }
+                        return &no_event.h;
+                    }
+                    case SDL_WINDOWEVENT_LEAVE:
+                    case SDL_WINDOWEVENT_FOCUS_LOST: {
+                        if (ptr_relative) {
+                            printf("SDL_WINDOWEVENT_FOCUS_LOST\n");
+                            ptr_relative = 0;
+                            SDL_SetRelativeMouseMode(SDL_FALSE);
+                        }
+                        return &no_event.h;
+                    }
+                }
+                return &no_event.h;
             }
             default: {
                 if (event.type == user_sdl_events + uev_fb_frame) {
@@ -339,7 +406,17 @@ int Storage_CopyToMemory(cap_t handle, void* address, size_t ofs, size_t len) {
 }
 
 int Storage_CreateObject(const char* name, cap_t buf_cap, size_t size) {
-    return -1;
+    void* data = caps[buf_cap].buf;
+    int n, fd = open(name, O_CREAT|O_TRUNC|O_RDWR, 0666);
+    if (fd == -1) return -1;
+    do {
+        n = write(fd, data, size);
+        if (n < 1) return -1; // early EOF or error reading
+        size -= n;
+    } while (size>0);
+    fd = close(fd);
+    if (fd == -1) return -1;
+    return 0;
 }
 
 int Storage_DeleteObject(const char* name) {
@@ -389,6 +466,11 @@ void FrameBuffer_Create(cap_t cap, FrameBuffer_Opts opts, size_t width, size_t h
     frame_event.user.type = user_sdl_events+uev_fb_frame;
     frame_event.user.data1 = (void*) fb_buffer;
     SDL_PushEvent(&frame_event); // thread-safe
+    // Must be set here, after window creation.
+    // We aren't receiving SDL_WINDOWEVENT_FOCUS_GAINED or SDL_WINDOWEVENT_ENTER
+    // right now, but previously found setting it there triggered the warp fallback.
+    SDL_SetRelativeMouseMode(SDL_TRUE);
+    ptr_relative = 1;
 }
 
 void FrameBuffer_Configure(cap_t fb_cap, FrameBuffer_Opts opts, size_t width, size_t height, size_t bpp, cap_t queue_cap) {

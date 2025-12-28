@@ -170,14 +170,6 @@ typedef enum Input_ButtonStateE {
     SIZE_Input_ButtonState = 0xFFFF
 } Input_ButtonState;
 
-typedef struct Input_ButtonEventE {
-    MasqEventHeader h;
-    uint16_t device;
-    uint16_t buttons;  // Input_ButtonState
-    int32_t x;
-    int32_t y;
-} Input_ButtonEvent;
-
 typedef struct Input_PointerEventE {
     MasqEventHeader h;
     uint16_t device;
