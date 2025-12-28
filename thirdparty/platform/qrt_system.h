@@ -44,6 +44,23 @@ void Mutex_Lock(mutex_t* mu);
 void Mutex_Unlock(mutex_t* mu);
 
 
+// ATOMICS
+
+typedef struct Atomic_Int_S { int value; } Atomic_Int;
+void Atomic_Set_Int(Atomic_Int* var, int value);
+int Atomic_Get_Int(Atomic_Int* var);
+int Atomic_CAS_Int(Atomic_Int* var, int old_val, int new_val);
+
+typedef struct Atomic_Ptr_S { void* ptr; } Atomic_Ptr;
+void Atomic_Set_Ptr(Atomic_Ptr* var, void* ptr);
+void Atomic_Set_Ptr_Release(Atomic_Ptr* var, void* ptr);
+void* Atomic_Get_Ptr(Atomic_Ptr* var);
+void* Atomic_Get_Ptr_Acquire(Atomic_Ptr* var);
+
+// Returns 1 if old_ptr matched and the swap was performed, 0 otherwise.
+int Atomic_CAS_Ptr(Atomic_Ptr* var, void* old_ptr, void* new_ptr);
+
+
 // BUFFER [P]
 
 // Uses placement capabilities, i.e. you assign them.

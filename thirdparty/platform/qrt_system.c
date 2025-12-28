@@ -74,6 +74,10 @@ void System_DropCapability(cap_t cap) {
         close(caps[cap].fd);
         caps[cap].fd = 0;
     }
+    if (caps[cap].aud) {
+        SDL_CloseAudioDevice(caps[cap].aud);
+        caps[cap].aud = 0;
+    }
 }
 
 void System_OfferCapability(cap_t cap, cap_t recipient) {
@@ -117,6 +121,45 @@ void Mutex_Unlock(mutex_t* mu) {
         printf("fatal: SDL_UnlockMutex failed: %s\n", SDL_GetError());
         exit(1);
     }
+}
+
+
+// ATOMICS
+
+// Yeah they're just wrapped, not sure how atomics will play out yet.
+
+void Atomic_Set_Int(Atomic_Int* var, int value) {
+        // "This function also acts as a full memory barrier"
+        SDL_AtomicSet((SDL_atomic_t*)var, value);
+}
+int Atomic_Get_Int(Atomic_Int* var) {
+        return SDL_AtomicGet((SDL_atomic_t*)var);
+}
+int Atomic_CAS_Int(Atomic_Int* var, int old_val, int new_val) {
+        return SDL_AtomicCAS((SDL_atomic_t*)var, old_val, new_val);
+}
+
+void Atomic_Set_Ptr(Atomic_Ptr* var, void* ptr) {
+        // "This function also acts as a full memory barrier"
+        SDL_AtomicSetPtr(&var->ptr, ptr);
+}
+void Atomic_Set_Ptr_Release(Atomic_Ptr* var, void* ptr) {
+        // "insert a release barrier between writing the data and the flag"
+        SDL_MemoryBarrierReleaseFunction();
+        // (makes no claim about barriers:)
+        SDL_AtomicSetPtr(&var->ptr, ptr);
+}
+void* Atomic_Get_Ptr(Atomic_Ptr* var) {
+        return SDL_AtomicGetPtr(&var->ptr);
+}
+void* Atomic_Get_Ptr_Acquire(Atomic_Ptr* var) {
+        void* p = SDL_AtomicGetPtr(&var->ptr);
+        // (makes no claim about barriers:)
+        SDL_MemoryBarrierAcquireFunction();
+        return p;
+}
+int Atomic_CAS_Ptr(Atomic_Ptr* var, void* old_ptr, void* new_ptr) {
+        return SDL_AtomicCASPtr(&var->ptr, old_ptr, new_ptr);
 }
 
 
@@ -423,6 +466,10 @@ void FrameBuffer_Submit(cap_t fb_cap, cap_t buf_cap) {
 
 // AUDIO
 
+// According to some libsdl forum posts, SDL_OpenAudioDevice has an undocumented
+// limitation: you can only have one callback attached to each device; in other
+// words, you only get one audio stream per device.
+
 void Audio_Create(cap_t au_cap, cap_t s_queue, Audio_Opts opts, size_t channels, size_t sample_rate, size_t samples_per_chunk) {
     snd_queue = s_queue;
     snd_playing = 0;
@@ -477,7 +524,7 @@ void Audio_CreateStream(cap_t au_cap, Audio_StreamCallback callback, Audio_Opts 
     caps[au_cap].size = obtained.samples;
 }
 
-size_t Audio_SampleCount(cap_t au_cap) {
+size_t Audio_FrameCount(cap_t au_cap) {
     if (caps[au_cap].aud != 0) {
         return caps[au_cap].size;
     }
@@ -494,7 +541,7 @@ void Audio_Start(cap_t au_cap) {
 void Audio_Stop(cap_t au_cap) {
     // stop pull-mode audio playback.
     if (caps[au_cap].aud != 0) {
-        SDL_CloseAudioDevice(caps[au_cap].aud);
+        SDL_PauseAudioDevice(caps[au_cap].aud, 1);
     }
 }
 
