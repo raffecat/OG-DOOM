@@ -52,8 +52,6 @@ typedef struct { byte blue, green, red, x; } RGB;
 size_t  VFrameCap;
 size_t  VPalCap;
 RGB     *VPalBuf;
-int		X_width;
-int		X_height;
 
 
 //
@@ -201,16 +199,15 @@ void I_StartFrame (void)
     }
 }
 
-static int	lastmousex = 0;
-static int	lastmousey = 0;
-boolean		mousemoved = false;
+// static int	lastmousex = 0;
+// static int	lastmousey = 0;
+// boolean	mousemoved = false;
 
 void I_GetEvent(void)
 {
     event_t event;
     MasqEventHeader *qev;
     Input_KeyEvent *kev;
-    Input_ButtonEvent *bev;
     Input_PointerEvent *pev;
     FrameBuffer_FrameEvent *fev;
 
@@ -253,17 +250,17 @@ void I_GetEvent(void)
 				// fprintf(stderr, "ku");
 				break;
 			case Input_ButtonDown:
-				bev = (Input_ButtonEvent*)qev;
+				pev = (Input_PointerEvent*)qev;
 				event.type = ev_mouse;
-				event.data1 = bev->buttons & 7; // 1,2,4
+				event.data1 = pev->buttons & 7; // 1,2,4
 				event.data2 = event.data3 = 0;
 				D_PostEvent(&event);
 				// fprintf(stderr, "b");
 				break;
 			case Input_ButtonUp:
-				bev = (Input_ButtonEvent*)qev;
+				pev = (Input_PointerEvent*)qev;
 				event.type = ev_mouse;
-				event.data1 = bev->buttons & 7; // 1,2,4
+				event.data1 = pev->buttons & 7; // 1,2,4
 				event.data2 = event.data3 = 0;
 				D_PostEvent(&event);
 				// fprintf(stderr, "bu");
@@ -272,23 +269,12 @@ void I_GetEvent(void)
 				pev = (Input_PointerEvent*)qev;
 				event.type = ev_mouse;
 				event.data1 = pev->buttons & 7; // 1,2,4
-				event.data2 = (pev->x - lastmousex) << 2;
-				event.data3 = (lastmousey - pev->y) << 2;
+				event.data2 = pev->x << 2;      // relative mouse movement
+				event.data3 = pev->y << 2;
 
 				if (event.data2 || event.data3)
 				{
-					lastmousex = pev->x;
-					lastmousey = pev->y;
-					if (pev->x != X_width/2 &&
-						pev->y != X_height/2)
-					{
-						D_PostEvent(&event);
-						// fprintf(stderr, "m");
-						mousemoved = false;
-					} else
-					{
-						mousemoved = true;
-					}
+					D_PostEvent(&event);
 				}
 				break;
 		}
@@ -314,7 +300,7 @@ void I_StartTic (void)
     while (!Queue_Empty(ddev_main_q))
 		I_GetEvent();
 
-    mousemoved = false;
+    // mousemoved = false;
 
 }
 
@@ -456,8 +442,8 @@ void I_InitGraphics(void)
     // if (M_CheckParm("-4"))
 	// multiply = 4;
 
-    X_width = SCREENWIDTH; // * multiply;
-    X_height = SCREENHEIGHT; // * multiply;
+    // X_width = SCREENWIDTH; // * multiply;
+    // X_height = SCREENHEIGHT; // * multiply;
 
     // check for command-line geometry
     // if ( (pnum=M_CheckParm("-geom")) ) // suggest parentheses around assignment

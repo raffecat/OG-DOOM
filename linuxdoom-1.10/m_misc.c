@@ -146,8 +146,7 @@ M_ReadFile
 
     length = (int) Storage_ObjectSize(handle); // XXX cast hack
     buf = Z_Malloc (length, PU_STATIC, NULL);
-    memcpy (buf, Buffer_Address(ddev_savebuf), length);
-    Buffer_Destroy (ddev_savebuf);
+    Storage_CopyToMemory(handle, buf, 0, length);
 		
     *buffer = buf;
     return length;
@@ -227,11 +226,11 @@ default_t	defaults[] =
 
 #ifdef NORMALUNIX
     {"key_right",&key_right, KEY_RIGHTARROW},
-    {"key_left",&key_left, KEY_LEFTARROW},
-    {"key_up",&key_up, KEY_UPARROW},
-    {"key_down",&key_down, KEY_DOWNARROW},
-    {"key_strafeleft",&key_strafeleft, ','},
-    {"key_straferight",&key_straferight, '.'},
+    {"key_left",&key_left, KEY_LEFTARROW}, 
+    {"key_up",&key_up, 'w'}, // KEY_UPARROW
+    {"key_down",&key_down, 's'}, // KEY_DOWNARROW
+    {"key_strafeleft",&key_strafeleft, 'a'},
+    {"key_straferight",&key_straferight, 'd'},
 
     {"key_fire",&key_fire, KEY_RCTRL},
     {"key_use",&key_use, ' '},

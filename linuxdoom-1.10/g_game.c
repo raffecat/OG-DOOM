@@ -238,7 +238,7 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 { 
     int		i; 
     boolean	strafe;
-    boolean	bstrafe; 
+    // boolean	bstrafe; 
     int		speed;
     int		tspeed; 
     int		forward;
@@ -255,7 +255,7 @@ void G_BuildTiccmd (ticcmd_t* cmd)
  
     strafe = gamekeydown[key_strafe] || mousebuttons[mousebstrafe] 
 	|| joybuttons[joybstrafe]; 
-    speed = gamekeydown[key_speed] || joybuttons[joybspeed];
+    speed = !(gamekeydown[key_speed] || joybuttons[joybspeed]);
  
     forward = side = 0;
     
@@ -348,37 +348,42 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	}
     
     // mouse
-    if (mousebuttons[mousebforward]) 
-	forward += forwardmove[speed];
+    // AJT: removed forward mouse movement (now a dedicated use button)
+    // if (mousebuttons[mousebforward]) 
+	// forward += forwardmove[speed];
     
     // forward double click
-    if (mousebuttons[mousebforward] != dclickstate && dclicktime > 1 ) 
+    // AJT: changed to be a dedicated use button
+    // if (mousebuttons[mousebforward] != dclickstate && dclicktime > 1 ) 
+    if (mousebuttons[mousebforward])
     { 
-	dclickstate = mousebuttons[mousebforward]; 
-	if (dclickstate) 
-	    dclicks++; 
-	if (dclicks == 2) 
-	{ 
+	// dclickstate = mousebuttons[mousebforward]; 
+	// if (dclickstate) 
+	//     dclicks++; 
+	// if (dclicks == 2) 
+	// { 
 	    cmd->buttons |= BT_USE; 
 	    dclicks = 0; 
-	} 
-	else 
-	    dclicktime = 0; 
+	// } 
+	// else 
+	//     dclicktime = 0; 
     } 
-    else 
-    { 
-	dclicktime += ticdup; 
-	if (dclicktime > 20) 
-	{ 
-	    dclicks = 0; 
-	    dclickstate = 0; 
-	} 
-    }
+    // else 
+    // { 
+	// dclicktime += ticdup; 
+	// if (dclicktime > 20) 
+	// { 
+	//     dclicks = 0; 
+	//     dclickstate = 0; 
+	// } 
+    // }
     
+    /*
+    // AJT: removed (now have dedicated use button)
     // strafe double click
     bstrafe =
 	mousebuttons[mousebstrafe] 
-	|| joybuttons[joybstrafe]; 
+	|| joybuttons[joybstrafe];
     if (bstrafe != dclickstate2 && dclicktime2 > 1 ) 
     { 
 	dclickstate2 = bstrafe; 
@@ -400,12 +405,15 @@ void G_BuildTiccmd (ticcmd_t* cmd)
 	    dclicks2 = 0; 
 	    dclickstate2 = 0; 
 	} 
-    } 
+    }
+    */
  
-    forward += mousey; 
-    if (strafe) 
-	side += mousex*2; 
-    else 
+    // AJT: removed: have dedicated forward/backward keys (WASD)
+    // forward += mousey; 
+    // AJT: always mouselook (do not modify with strafe mode)
+    // if (strafe) 
+	// side += mousex*2; 
+    // else 
 	cmd->angleturn -= mousex*0x8; 
 
     mousex = mousey = 0; 
