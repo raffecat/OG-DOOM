@@ -107,6 +107,21 @@ enum controller_enum {
     ctrl_event         = 15, //             Never implemented
 };
 
+enum opl3_pan {
+    opl3_pan_left = 0x10,
+    opl3_pan_centre = 0x30,   // at pan=64
+    opl3_pan_right = 0x20,
+
+    // -6 dB when panned to centre (routing to both speakers)
+    // roughly half loudness to account for two speakers;
+    // E2M8 "Nobody Told Me About Id" now sounds right.
+    opl3_centre_att = 6,
+
+    // +/-20 must stay centered to match "Dark Halls" recordings,
+    // +/-21 has some basis: 128/3 = 42.666; 42/2 = 21 each side.
+    opl3_pan_threshold = 21,  // 64-N < centre < 64+N
+};
+
 // Adlib HW mapping: 9 channels -> operator 1, operator 2
 static int chan_oper1[] = { 0, 1, 2,  8,  9, 10, 16, 17, 18 };
 static int chan_oper2[] = { 3, 4, 5, 11, 12, 13, 19, 20, 21 };
@@ -342,7 +357,6 @@ static void load_hw_instrument(musplayer_t* mp, mus_hw_voice_t* hw, int hw_ch, i
     adlib_write(mp, (B|0x60)+chan_oper1[ch], v->modAttack);   // Modulator attack, decay
     adlib_write(mp, (B|0x80)+chan_oper1[ch], v->modSustain);  // Modulator sustain, release
     adlib_write(mp, (B|0xE0)+chan_oper1[ch], v->modWaveSel);  // Modulator wave select
-    adlib_write(mp, (B|0xC0)+ch, v->feedback | 0x30);         // Channel feedback, connection (0x30 OPL3 channel routing)
     adlib_write(mp, (B|0x20)+chan_oper2[ch], v->carChar);     // Carrier AM, VIB, EG, KSR, Mult
     adlib_write(mp, (B|0x60)+chan_oper2[ch], v->carAttack);   // Carrier attack, decay
     adlib_write(mp, (B|0x80)+chan_oper2[ch], v->carSustain);  // Carrier sustain, release
@@ -351,7 +365,7 @@ static void load_hw_instrument(musplayer_t* mp, mus_hw_voice_t* hw, int hw_ch, i
     hw->ksl2 = v->carScale;                            // Carrier key scaling (top two bits)
     hw->lvl1 = v->modLevel;                            // Modulator output level (low six bits)
     hw->lvl2 = v->carLevel;                            // Carrier output level (low six bits)
-    hw->sumMode = v->feedback & 1;                     // Current instrument connection type (0=FM 1=Add)
+    hw->feedback = v->feedback;                        // Current instrument connection type (0=FM 1=Add)
     hw->fineTune = vi ? (in->fineTune / 2) - 64 : 0;   // Second voice detune level
     hw->ins_sel = ins_sel;                             // instrument+voice configured on this channel
     if (hw->lvl1 > 63) {
@@ -431,45 +445,50 @@ static inline int clamp(int v, int min_v, int max_v) {
     return v >= min_v ? (v <= max_v ? v : max_v) : min_v;
 }
 
-static void update_volume(musplayer_t* mp, int mus_ch, int ch_att) {
+static void update_volume(musplayer_t* mp, int mus_ch, int ch_att, int pan_bits) {
     for (int h=0; h<mus_num_voices; h++) {
         if (mp->hw_voices[h].mus_ch == mus_ch) {
             mus_hw_voice_t* hw = &mp->hw_voices[h];
             // FM mode: operator 1 modulates frequency of operator 2.
-            int v_att = clamp(mp->main_att + hw->note_att + ch_att, 0, 63);
+            int pan_att = (pan_bits == opl3_pan_centre) ? opl3_centre_att : 0;
+            int v_att = clamp(mp->main_att + hw->note_att + ch_att + pan_att, 0, 63);
             int att1 = hw->lvl1;
             int att2 = hw->lvl2 + v_att; if (att2 > 63) att2 = 63; else if (att2 < 0) att2 = 0;
             // additive mode: operator 1 is summed with operator 2.
-            if (hw->sumMode) { att1 += v_att; if (att1 > 63) att1 = 63; else if (att1 < 0) att1 = 0; }
+            if (hw->feedback&1) { att1 += v_att; if (att1 > 63) att1 = 63; else if (att1 < 0) att1 = 0; }
             // printf("[MUS] *%d update (%d) lvls %d %d %d #%d\n", h, hw->noteid, 63-att1, 63-att2, v_att, mus_ch);
             int B=0, ch = h; if (ch >= mus_bank_two) { ch -= mus_bank_two; B = 0x100; } // OPL3 2nd bank
             adlib_write(mp, (B|0x40)+chan_oper1[ch], hw->ksl1|att1); // operator 1 attenuation + KSL
             adlib_write(mp, (B|0x40)+chan_oper2[ch], hw->ksl2|att2); // operator 2 attenuation + KSL
+            adlib_write(mp, (B|0xC0)+ch, hw->feedback | pan_bits); // channel pan + feedback + add/fm mode
         }
     }
 }
 
-static void key_on(musplayer_t* mp, int hw_ch, int noteid, int note, int noteOfs, int note_att, int ch_att, int mus_ch, int bend) {
+static void key_on(musplayer_t* mp, int hw_ch, int noteid, int note, int noteOfs, int note_att, int ch_att, int mus_ch, int bend, int pan_bits) {
     mus_hw_voice_t* hw = &mp->hw_voices[hw_ch];
     // "Attenuation = 24*d5 + 12*d4 + 6*d3 + 3*d2 + 1.5*d1 + 0.75*d0 (dB)" - Yamaha's YMF262 doc
     // FM mode: operator 1 modulates frequency of operator 2.
-    int v_att = clamp(mp->main_att + note_att + ch_att, 0, 63);
+    int pan_att = (pan_bits == opl3_pan_centre) ? opl3_centre_att : 0;
+    int v_att = clamp(mp->main_att + note_att + ch_att + pan_att, 0, 63);
     int att1 = hw->lvl1;
     int att2 = hw->lvl2 + v_att; if (att2 > 63) att2 = 63; else if (att2 < 0) att2 = 0;
     // additive mode: operator 1 is summed with operator 2.
-    if (hw->sumMode) { att1 += v_att; if (att1 > 63) att1 = 63; else if (att1 < 0) att1 = 0; }
+    if (hw->feedback&1) { att1 += v_att; if (att1 > 63) att1 = 63; else if (att1 < 0) att1 = 0; }
     // printf("[MUS] *%d key on (%d) %d lvls %d %d %d #%d\n", hw_ch, noteid, note, 63-att1, 63-att2, -ch_att, mus_ch);
     int B=0, ch = hw_ch; if (ch >= mus_bank_two) { ch -= mus_bank_two; B = 0x100; } // OPL3 2nd bank
     adlib_write(mp, (B|0x40)+chan_oper1[ch], hw->ksl1|att1); // operator 1 attenuation + KSL
     adlib_write(mp, (B|0x40)+chan_oper2[ch], hw->ksl2|att2); // operator 2 attenuation + KSL
+    // channel panning
+    adlib_write(mp, (B|0xC0)+ch, hw->feedback | pan_bits); // channel pan + feedback + add/fm mode
     // set frequency, key-on note
     uint16_t hw_cmd = note_cmds[note + noteOfs] + hw->fineTune; // unclipped seems correct! (E1M2)
     if (bend) {
         // apply current pitch-bend
         hw_cmd = bend_pitch(mp, hw_cmd, note + noteOfs, bend, hw->fineTune);
     }
-    adlib_write(mp, (B|0xa0)+ch, hw_cmd & 255); // frequency low 8 bits
-    adlib_write(mp, (B|0xb0)+ch, hw_cmd >> 8);  // 6 bits octave/key-on | 2 bits freq
+    adlib_write(mp, (B|0xA0)+ch, hw_cmd & 255); // frequency low 8 bits
+    adlib_write(mp, (B|0xB0)+ch, hw_cmd >> 8);  // 6 bits octave/key-on | 2 bits freq
     hw->seq = mp->next_keyon_seq++;            // key-on sequence number (allow key-off oldest)
     hw->noteid = noteid;                   // save midi note for key_off (original key_on note)
     hw->note_att = note_att;               // key-on note attenuation (before controllers)
@@ -482,7 +501,7 @@ static void key_on(musplayer_t* mp, int hw_ch, int noteid, int note, int noteOfs
 // the instrument you need loaded (someties too aggressive
 // at re-using notes that are still in their 'release' phase)
 #define REUSE_INSTRUMENTS
-#undef KILL_OLDEST
+#define KILL_OLDEST
 
 // model release time from sustain level (lerp) using Actual Time Tables.
 // 1. use the oldest keyed-off voice playing the same instrument (re-trigger),
@@ -542,8 +561,8 @@ static int choose_hw_voice(musplayer_t* mp, int ins_sel, int mus_ch, int noteid)
     // use the oldest channel.
     // key-off the note if currently playing,
     // otherwise Adlib won't key-on the new note.
-    printf("[MUS] #%d KILLED note (%d) - overflow\n", hw_voices[oldest].mus_ch, hw_voices[oldest].noteid);
-    key_off_hw(oldest);
+    printf("[MUS] #%d KILLED note (%d) - overflow\n", mp->hw_voices[oldest].mus_ch, mp->hw_voices[oldest].noteid);
+    key_off_hw(mp, oldest);
     return oldest;
 #else
     // drop the note.
@@ -551,7 +570,7 @@ static int choose_hw_voice(musplayer_t* mp, int ins_sel, int mus_ch, int noteid)
 #endif
 }
 
-static void play_note(musplayer_t* mp, int ins_sel, int noteid, int note, int noteOfs, int note_att, int ch_att, int mus_ch, int bend) {
+static void play_note(musplayer_t* mp, int ins_sel, int noteid, int note, int noteOfs, int note_att, int ch_att, int mus_ch, int bend, int pan) {
     int voice = choose_hw_voice(mp, ins_sel, mus_ch, noteid);
     if (voice < 0) {
         printf("[MUS] #%d DROPPED note (%d) %d\n", mus_ch, noteid, note);
@@ -560,7 +579,7 @@ static void play_note(musplayer_t* mp, int ins_sel, int noteid, int note, int no
     if (mp->hw_voices[voice].ins_sel != ins_sel) {
         load_hw_instrument(mp, &mp->hw_voices[voice], voice, ins_sel);
     }
-    key_on(mp, voice, noteid, note, noteOfs, note_att, ch_att, mus_ch, bend);
+    key_on(mp, voice, noteid, note, noteOfs, note_att, ch_att, mus_ch, bend, pan);
 }
 
 static void mus_event(musplayer_t* mp, int ctrl, int value, int mus_ch, mus_channel_t* ch) {
@@ -579,13 +598,13 @@ static void mus_event(musplayer_t* mp, int ctrl, int value, int mus_ch, mus_chan
             ch->ins = &mp->op2bank[value];
             return;
         case ctrl_bank_select:   // Bank select: 0 by default
-	    printf("[MUS] #%d bank select = %d\n", mus_ch, value);
+            printf("[MUS] #%d bank select = %d\n", mus_ch, value);
             return;
         case ctrl_modulation:    // Modulation (frequency vibrato depth)
             // printf("[MUS] #%d vibrato depth = %d\n", mus_ch, value);
             // XXX this is a global HW setting; use this, or emulate it? what would PR do?
             // adlib_write(0xbd, (value & 1) << 6);    // Vibrato Depth (bit 6)  XXX using bit 0
-	    printf("[MUS] #%d modulation = %d\n", mus_ch, value);
+            printf("[MUS] #%d modulation = %d\n", mus_ch, value);
             return;
         case ctrl_volume:        // Volume: 0-silent, ~100-normal, 127-loud
             // insight check: volume is attenuation (att = max - vol)
@@ -597,16 +616,18 @@ static void mus_event(musplayer_t* mp, int ctrl, int value, int mus_ch, mus_chan
             if (value > 127) value = 127; // must limit
             ch->vol_att = att_log_square[value];
             // printf("[MUS] #%d volume = %d\n", mus_ch, value);
-            update_volume(mp, mus_ch, ch->vol_att + ch->exp_att);
+            update_volume(mp, mus_ch, ch->vol_att + ch->exp_att, ch->pan_bits);
             return;
         case ctrl_pan:           // Pan (balance): 0-left, 64-center (default), 127-right
-            // printf("[MUS] #%d pan = %d\n", mus_ch, value);
+            ch->pan_bits = value <= 64-opl3_pan_threshold ? opl3_pan_left : (value >= 64+opl3_pan_threshold ? opl3_pan_right : opl3_pan_centre);
+            printf("[MUS] #%d pan = %d\n", mus_ch, value);
+            update_volume(mp, mus_ch, ch->vol_att + ch->exp_att, ch->pan_bits);
             return;
         case ctrl_expression:    // Expression
             if (value > 127) value = 127; // must limit
             ch->exp_att = att_log_square[value];
             printf("[MUS] #%d expression = %d\n", mus_ch, value);
-            update_volume(mp, mus_ch, ch->vol_att + ch->exp_att);
+            update_volume(mp, mus_ch, ch->vol_att + ch->exp_att, ch->pan_bits);
             return;
         case ctrl_reverb:        // Reverb depth
             printf("[MUS] #%d reverb = %d\n", mus_ch, value);
@@ -642,7 +663,8 @@ static void mus_event(musplayer_t* mp, int ctrl, int value, int mus_ch, mus_chan
             if (ch->vol_att != 0 || ch->exp_att != 0) {
                 ch->vol_att = 0;
                 ch->exp_att = 0;
-                update_volume(mp, mus_ch, ch->vol_att + ch->exp_att);
+                ch->pan_bits = opl3_pan_centre;
+                update_volume(mp, mus_ch, ch->vol_att + ch->exp_att, ch->pan_bits);
             }
             if (ch->bend != 0) {
                 ch->bend = 0;
@@ -694,7 +716,7 @@ int musplay_update(musplayer_t* mp, int ticks) {
                     // note volume, not real sure how this is handled in MUS
                     // (midi velocity / strike-intensity)
                     // tweaked this until the music sounds about right..
-                    int note_att = att_log_cube[vol];
+                    int note_att = att_log_square[vol];
                     int ch_att = ch->vol_att; // current volume attenuation (0.75 dB steps)
                     if (mus_ch==15) {
                         // notes 35-81 on #15 plays percussion instrument 135-181 (midi?)
@@ -703,10 +725,10 @@ int musplay_update(musplayer_t* mp, int ticks) {
                             int ins_sel = 128-35+note; // percussion bank starts at 128
                             MUS_instrument* ins = &mp->op2bank[ins_sel];
                             // yeah these can't use noteOfs, otherwise it breaks a bunch of tunes
-                            play_note(mp, ins_sel, note, ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend); // ins->voice[0].noteOfs
+                            play_note(mp, ins_sel, note, ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits); // ins->voice[0].noteOfs
                             if (ins->flags & musf_double_voice) {
                                 // double-voice note: voice=1 in bit 8 of ins_sel and noteid
-                                play_note(mp, ins_sel|(1<<8), note|(1<<8), ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend); // ins->voice[1].noteOfs
+                                play_note(mp, ins_sel|(1<<8), note|(1<<8), ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits); // ins->voice[1].noteOfs
                             }
                         }
                     } else {
@@ -714,17 +736,17 @@ int musplay_update(musplayer_t* mp, int ticks) {
                         int ins_sel = ch->ins_idx; // instrument selector: voice=0 in bit 8
                         if (ins->flags & musf_fixed_note) {
                             // play a fixed note, ignoring noteOfs (as per format doc)
-                            play_note(mp, ins_sel, note, ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend); // noteOfs=0
+                            play_note(mp, ins_sel, note, ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits); // noteOfs=0
                             if (ins->flags & musf_double_voice) {
                                 // double-voice note: voice=1 in bit 8 of ins_sel and noteid
-                                play_note(mp, ins_sel|(1<<8), note|(1<<8), ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend); // noteOfs=0
+                                play_note(mp, ins_sel|(1<<8), note|(1<<8), ins->noteNum, 0, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits); // noteOfs=0
                             }
                         } else {
                             // play a normal note.
-                            play_note(mp, ins_sel, note, note, ins->voice[0].noteOfs, note_att, ch_att, mus_ch, ch->bend);
+                            play_note(mp, ins_sel, note, note, ins->voice[0].noteOfs, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits);
                             if (ins->flags & musf_double_voice) {
                                 // double-voice note: voice=1 in bit 8 of ins_sel and noteid
-                                play_note(mp, ins_sel|(1<<8), note|(1<<8), note, ins->voice[1].noteOfs, note_att, ch_att, mus_ch, ch->bend);
+                                play_note(mp, ins_sel|(1<<8), note|(1<<8), note, ins->voice[1].noteOfs, note_att, ch_att, mus_ch, ch->bend, ch->pan_bits);
                             }
                         }
                     }
@@ -765,7 +787,7 @@ int musplay_update(musplayer_t* mp, int ticks) {
                         for (int i=0; i<mus_num_voices; i++) {
                             key_off_hw(mp, i);
                         }
-			mp->score = 0; // ignore future updates
+                        mp->score = 0; // ignore future updates
                     }
                     return 0; // stopped
                 }
@@ -806,13 +828,14 @@ void musplay_start(musplayer_t* mp, char* data, int loop) {
     // clear all MUS channels
     memset(mp->channels, 0, sizeof(mp->channels));
     for (int m=0; m<mus_num_channels; m++) {
-        mp->channels[m].last_vol = 100;    // volume of prior note on the channel   XXX or 0?
+        mp->channels[m].last_vol = 0;          // volume of prior note on the channel
         mp->channels[m].ins = &mp->op2bank[0]; // must be a valid pointer
+        mp->channels[m].pan_bits = opl3_pan_centre;
     }
     // clear all HW channels
     memset(mp->hw_voices, 0, sizeof(mp->hw_voices));
     for (int h=0; h<mus_num_voices; h++) {
-        mp->hw_voices[h].noteid = -1;    // no note playing
+        mp->hw_voices[h].noteid = -1;  // no note playing
         mp->hw_voices[h].mus_ch = -1;  // no channel owner
         mp->hw_voices[h].ins_sel = -1; // no instrument selected
     }
@@ -831,7 +854,7 @@ void musplay_stop (musplayer_t* mp) {
     adlib_write(mp, 0xbd, 0); // stop rhythm instruments, clear rhythm mode, vibrato, tremelo
     for (int i=0; i<mus_num_voices; i++) {
         // silence_hw(i); // set release rates to max, and key-off
-	key_off_hw(mp, i);
+        key_off_hw(mp, i);
     }
     mp->score = 0;
 }

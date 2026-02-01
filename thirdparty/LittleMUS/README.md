@@ -1,25 +1,33 @@
-# Little MUS player
+# LittleMUS player
 
-Little MUS is a music player library for DMX MUS files/lumps used in the
+LittleMUS is a music player library for DMX MUS files/lumps used in the
 DOS versions of DOOM, DOOM II, Heretic, Hexen, Chex Quest, Raptor, Strife
 to play Adlib/OPL music.
 
-I wrote this a part of a source port of the original linuxdoom-1.10 release.
+It aims for 100% accurate playback of the original "Sound Blaster" FM synth
+music (Adlib/OPL) in DOOM and other games that used the commercial DMX sound
+library.
 
-At this stage it plays the DOOM and DOOM II "Sound Blaster" Adlib/OPL music
-with about 99% accuracy, compared to hardware recordings on YouTube.
+At this stage it plays the DOOM and DOOM II Adlib/OPL music with about 99%
+accuracy compared to hardware recordings. (OPL emulation, output filtering and
+resampling happen downstream of LittleMUS; they're not included in this 99%!)
+
+I wrote LittleMUS a part of a source port of the original linuxdoom-1.10 release.
+Try it out in [the OG, DOOM](https://github.com/raffecat/OG-DOOM) which aims
+to re-create the sound and feel of playing DOOM on a 486 with a Sound Blaster.
 
 
 ## Sample Rate
 
 Real Sound Blaster cards have low-pass filtering on the output that
-you can approximate using a sample-rate of 22050 or 24000.
+you can approximate using a sample-rate of 22050 or 24000 (a real LPF
+would be better.)
 
 It sounds much sharper and cleaner at 44100 or 48000, but some of the high-frequency
-notes in DOOM no longer match recordings. I prefer it this way, but you choose :)
+notes in DOOM no longer match recordings, and will break your ears.
 
 You can also use the OPL chip's native sample-rate of ~49716 (14318180/288), but this
-requires resampling for playback on modern hardware. The DOSBox/Woody OPL emulator
+requires resampling for playback on modern hardware. The DOSBox/Woody-OPL emulator
 produces a decent downsampling at the requested sample-rate.
 
 
@@ -39,14 +47,22 @@ This is quite audible, if you (for example) call this once per video frame...
 ## OPL Emulator
 
 The library is set up for [Woody-OPL](https://github.com/rofl0r/woody-opl)
-which was extracted from [DOSBox](https://www.dosbox.com/wiki/Main_Page) before it changed over to [Nuked-OPL](https://github.com/nukeykt/Nuked-OPL3).
+which was extracted from [DOSBox](https://www.dosbox.com/wiki/Main_Page) before
+it changed over to [Nuked-OPL](https://github.com/nukeykt/Nuked-OPL3).
 
-Little MUS only calls a single function, `void adlib_write(int reg, int val)`,
+LittleMUS only calls a single function, `void adlib_write(int reg, int val)`,
 which you can instead define in your program to do anything you like.
 
-I tried it with Nuked-OPL (you can still use it by building with -DOPL_NUKED)
-but some of the notes didn't come out right at the limits, so I went back to
-woody-opl.
+I tried it with Nuked-OPL, but some notes didn't key on/off correctly,
+so I went back to woody-opl.
+
+It seems Nuked requires time to pass, i.e. a call to `OPL3_Generate`, to actually
+apply the key-on or key-off (otherwise subsequent key-on/key-off writes just
+flip a single bit back and forth, leading to no net change.)
+
+This would admittedly lead to more accurate results, but it implies an entirely
+different architecture for LittleMUS: it must drive Nuked itself, filling a
+buffer with samples as it processes MUS events.
 
 
 ## Real OPL Hardware?
@@ -60,6 +76,46 @@ It can work with OPL2, just change the `num_voices` constant to `9`.
 The DOOM music will drop a few notes on OPL2; it's currently configured
 to drop new notes rather than kill old notes, I'm still playing around
 with this part (it doesn't happen much on OPL3.)
+
+
+## Volume Control?
+
+I added a volume control, combined internally with the operator attenuation
+factors written to the OPL registers.
+
+There may be some problems with doing this:
+
+* It seems to change the timbre of some instruments (perhaps it changes the height
+  of ADSR envelopes without changing attack/decay rates? Not sure. It may only
+  be a problem with volumes > 100)
+* Some notes in the music score have their note volume (midi velocity) set to match
+  some other note that's already playing, and this can change their relative volumes.
+
+So I don't recommend using the player's volume control (leave it at the default 100),
+instead I recommend mixing the OPL output with your own (or the OS's) mixer to
+change volume.
+
+
+## Missing Features
+
+Right now I only know of one left to do:
+
+* LFO emulation, e.g. E1M8 uses the midi modulation controller to vary vibrato depth.
+  OPL2/3 hardware only has an on/off vibrato switch, so it's likely the original DMX player
+  generated its own scaled LFO and modified the operator pitch.
+
+And the following differences when used with Woody-OPL, which (I think) mostly come
+down to choice of sample rate, and filtering:
+
+* Slight phase errors in E2M8, leading to different chorus "voicing". May be due
+  to the instantaneous nature of programming the OPL emulator, i.e. there's no register
+  programming skew. A low-pass filter would also shift phases a bit.
+* Pops in E1M5 also happen on real hardware, but to a lesser extent, likely due to
+  the presence of a low-pass filter.
+* Some differences in timbre, especially on high notes, could be due (again) to the
+  lack of a proper low-pass filter.
+
+I might look into adding a low-pass filter.
 
 
 ## Hardware Recordings
@@ -84,6 +140,12 @@ I used a lot of different references to put this together..
 * The DOSBox Team, OPL2/OPL3 emulation library
 * Ken Silverman, ADLIBEMU.C
 * id software, for giving us DOOM.
+
+
+## Building
+
+Drop the files into your project, maybe in a thirdparty directory.
+There's no build-system nonsense here.
 
 
 ## Library API
@@ -118,15 +180,17 @@ If you're a DOOM engine, you can get this data from the `GENMIDI` lump:
 void musplay_volume (int volume);
 ```
 
-Set the player volume (0-127, 100 = _full volume_)
+Set the player volume (0-127, 100 = full volume [>100 boosts])
 
 This is combined into the hardware attenuation levels written to the
 adlib registers in the OPL emulator.
 
-In other words, the generated samples will come out more loud or quiet.
+Note: I don't recommend using this, as it [seems to] affect the "tone"
+of some instruments and/or the relative level of the notes played
+(maybe only when volume > 100?)
 
-If volume is greater than 100, it will _boost_ the volume above the
-arranged level of the music, within the headroom available.
+Instead I recommend leaving this at the default (100) and using your own
+or the OS's mixer to change volume.
 
 
 ### _musplay_start_
