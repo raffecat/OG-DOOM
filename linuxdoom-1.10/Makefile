@@ -37,7 +37,8 @@ CFLAGS+=-g -Wall \
 	-DNORMALUNIX \
 	-DOPLTYPE_IS_OPL3 \
 	-I../thirdparty/platform \
-	-I../thirdparty/musplayer \
+	-I../thirdparty/LittleMUS \
+	-I../thirdparty/Nuked-OPL3 \
 	$(SDL_I) \
 	# -DUSEASM
 LDFLAGS+=$(SDL_L)
@@ -111,7 +112,8 @@ OBJS=				\
 		$(O)/info.o				\
 		$(O)/sounds.o		\
 		$(O)/musplayer.o		\
-		$(O)/opl.o		\
+		$(O)/musdriver.o		\
+		$(O)/opl3.o		\
 		$(O)/qrt_system.o		\
 		$(O)/qrt_services.o
 
@@ -130,10 +132,10 @@ $(BIN)/doom:	$(OBJS) $(O)/i_main.o
 $(O)/%.o:	%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(O)/musplayer.o:	../thirdparty/musplayer/musplayer.c
+$(O)/mus%.o:		../thirdparty/LittleMUS/mus%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(O)/opl.o:		../thirdparty/woody-opl/opl.c
+$(O)/opl3.o:		../thirdparty/Nuked-OPL3/opl3.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(O)/qrt_%.o:		../thirdparty/platform/qrt_%.c

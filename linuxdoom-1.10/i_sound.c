@@ -83,7 +83,7 @@ rcsid[] = "$Id: i_unix.c,v 1.5 1997/02/03 22:45:10 b1 Exp $";
 #define PCM_Q_FACTOR            0.6f
 
 // Low-pass filters
-#define OPL_CUTOFF_HZ           8000
+#define OPL_CUTOFF_HZ           (MIX_SAMPLERATE/2)
 
 
 // --------------------------------------------------------------------------
