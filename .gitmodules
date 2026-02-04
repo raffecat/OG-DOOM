@@ -2,3 +2,6 @@
 	path = thirdparty/LittleMUS
 	url = https://github.com/raffecat/LittleMUS.git
 	branch = main
+[submodule "thirdparty/Nuked-OPL3"]
+	path = thirdparty/Nuked-OPL3
+	url = https://github.com/nukeykt/Nuked-OPL3
