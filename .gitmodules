@@ -1,0 +1,4 @@
+[submodule "thirdparty/LittleMUS"]
+	path = thirdparty/LittleMUS
+	url = https://github.com/raffecat/LittleMUS.git
+	branch = main
