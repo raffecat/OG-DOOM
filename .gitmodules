@@ -5,3 +5,7 @@
 [submodule "thirdparty/Nuked-OPL3"]
 	path = thirdparty/Nuked-OPL3
 	url = https://github.com/nukeykt/Nuked-OPL3
+[submodule "thirdparty/platform"]
+	path = thirdparty/platform
+	url = https://github.com/raffecat/porting-SDL2.git
+	branch = main
