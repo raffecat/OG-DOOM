@@ -4,7 +4,7 @@
 #
 # $Log:$
 #
-CC= clang  # gcc or g++ or clang
+# CC= clang # gcc or g++ or clang
 
 OS_NAME := $(shell uname -s | tr A-Z a-z)
 ifeq ($(OS_NAME),linux)
@@ -33,9 +33,8 @@ SDL_L := -L$(SDL)/lib
 endif
 
 
-CFLAGS+=-g -Wall \
+CFLAGS+=-O2 -Wall \
 	-DNORMALUNIX \
-	-DOPLTYPE_IS_OPL3 \
 	-I../thirdparty/platform \
 	-I../thirdparty/LittleMUS \
 	-I../thirdparty/Nuked-OPL3 \

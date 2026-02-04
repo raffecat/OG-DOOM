@@ -44,10 +44,6 @@ byte*	I_ZoneBase (int *size);
 // returns current time in tics.
 int I_GetTime (void);
 
-// Called by sound mixer.
-// returns time in 1/240th second tics
-int I_GetSoundTime (void);
-
 
 //
 // Called by D_DoomLoop,

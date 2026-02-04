@@ -100,27 +100,6 @@ int  I_GetTime (void)
 }
 
 
-#define MUSICRATE 140
-
-//
-// I_GetSoundTime
-// returns time in 1/140th second tics (140 Hz)
-//
-int  I_GetSoundTime (void)
-{
-    struct timeval	tp;
-    struct timezone	tzp;
-    int			newtics;
-    static int		basesoundtime=0;
-  
-    gettimeofday(&tp, &tzp);
-    if (!basesoundtime)
-	basesoundtime = tp.tv_sec;
-    newtics = (tp.tv_sec-basesoundtime)*MUSICRATE + tp.tv_usec*MUSICRATE/1000000;
-    return newtics;
-}
-
-
 //
 // I_Init
 //

@@ -7,7 +7,7 @@
                 "${workspaceFolder}/thirdparty/**",
                 "/opt/homebrew/opt/sdl2/include"
             ],
-            "defines": ["NORMALUNIX","OPLTYPE_IS_OPL3","OPL_NUKED"],
+            "defines": ["NORMALUNIX"],
             "compilerPath": "/usr/bin/clang",
             "cStandard": "c17",
             "cppStandard": "c++17",

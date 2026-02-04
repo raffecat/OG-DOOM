@@ -77,7 +77,7 @@ int xlatekey(int code, int mod, int down)
 	case MasqKey_Escape:	rc = KEY_ESCAPE;	break;
 	case MasqKey_Return:
 		rc = KEY_ENTER;
-		if (mod & MasqKeyModifierLAlt && down) {
+		if ((mod & MasqKeyModifierLAlt) && down) {
 			fullscreen ^= 1;
 			FrameBuffer_SetFullscreen(ddev_fb, fullscreen);
 		}
