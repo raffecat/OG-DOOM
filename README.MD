@@ -67,6 +67,14 @@ Download an [SLD2 Release](https://github.com/libsdl-org/SDL/releases/tag/releas
 You can build the project using VSCode or Microsoft Visual Studio.
 Instructions to follow.
 
+## Updating dependencies
+
+To update submodule dependencies, if that becomes necessary, from the project root:
+
+```sh
+git submodule update --remote
+```
+
 ## License
 
 The DOOM source code has the following licese:
