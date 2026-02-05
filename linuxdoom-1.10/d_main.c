@@ -654,6 +654,25 @@ void IdentifyVersion (void)
 	return;
     }
 
+    if (M_CheckParm ("-doom1"))
+    {
+      gamemode = shareware;
+      D_AddFile (doom1wad);
+      return;
+    }
+    if (M_CheckParm ("-doomu"))
+    {
+      gamemode = retail;
+      D_AddFile (doomuwad);
+      return;
+    }
+    if (M_CheckParm ("-doom2"))
+    {
+	gamemode = commercial;
+	D_AddFile (doom2wad);
+	return;
+    }
+
     if ( Storage_ObjectExists(doom2fwad) )
     {
 	gamemode = commercial;
