@@ -226,7 +226,7 @@ static void mix_music( int mix_frames_needed ) {
 	}
 
 	// generate OPL samples, tick the music player
-	float volume = (float)(musvol) / 127.0f;
+	float volume = (float)(musvol) * 2.0f / 127.0f;
 	if (!musdriver_generate(&music_driver, music_downmix, mix_frames_needed, volume)) {
 		return; // buffer overflow
 	}
